@@ -913,36 +913,52 @@ async function setDialogSchedule(page, platform, publishAt) {
       }, selector);
       if (!opened) throw new Error(`头条未找到${label}下拉框`);
       await page.waitForTimeout(250);
-      const picked = await page.evaluate((expected) => {
-        const visible = (node) => {
-          const style = window.getComputedStyle(node);
-          const rect = node.getBoundingClientRect();
-          return (
-            style.display !== "none" &&
-            style.visibility !== "hidden" &&
-            rect.width > 0 &&
-            rect.height > 0
-          );
-        };
-        const norm = (text) => String(text || "").replace(/\s+/g, "").trim();
-        const candidates = [
-          ...document.querySelectorAll(
-            ".byte-select-option, [class*='select-option'], [role='option'], li"
-          ),
-        ].filter(visible);
-        const target = candidates.find((node) => norm(node.textContent) === expected);
-        if (!target) {
-          return {
-            ok: false,
-            options: candidates
-              .map((node) => norm(node.textContent))
-              .filter(Boolean)
-              .slice(-80),
+      const pickOnce = () =>
+        page.evaluate((expected) => {
+          const visible = (node) => {
+            const style = window.getComputedStyle(node);
+            const rect = node.getBoundingClientRect();
+            return (
+              style.display !== "none" &&
+              style.visibility !== "hidden" &&
+              rect.width > 0 &&
+              rect.height > 0
+            );
           };
-        }
-        target.click();
-        return { ok: true };
-      }, value);
+          const norm = (text) => String(text || "").replace(/\s+/g, "").trim();
+          const candidates = [
+            ...document.querySelectorAll(
+              ".byte-select-option, [class*='select-option'], [role='option'], li"
+            ),
+          ].filter(visible);
+          const target = candidates.find((node) => norm(node.textContent) === expected);
+          if (!target) {
+            return {
+              ok: false,
+              options: candidates.map((node) => norm(node.textContent)).filter(Boolean).slice(-80),
+            };
+          }
+          target.click();
+          return { ok: true };
+        }, value);
+      let picked = await pickOnce();
+      // 头条的下拉同样是虚拟列表，目标值可能不在首屏：逐屏滚动后再重试。
+      for (let scrolled = 0; !picked.ok && scrolled < 15; scrolled += 1) {
+        const moved = await page.evaluate((offset) => {
+          const holders = [...document.querySelectorAll("*")].filter(
+            (node) => node.scrollHeight > node.clientHeight + 4 && node.clientHeight > 0
+          );
+          if (!holders.length) return false;
+          holders.forEach((node) => {
+            node.scrollTop = node.scrollTop + offset;
+          });
+          return true;
+        }, scrolled === 0 ? 0 : 180);
+        if (!moved) break;
+        await page.waitForTimeout(150);
+        const retried = await pickOnce();
+        picked = retried.ok ? retried : { ok: false, options: [...picked.options, ...retried.options].slice(-80) };
+      }
       if (!picked.ok) {
         throw new Error(`头条${label}未找到选项 ${value}：${JSON.stringify(picked.options)}`);
       }
