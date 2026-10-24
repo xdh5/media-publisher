@@ -10,6 +10,7 @@ const OFFICIAL_SCHEDULE_PLATFORMS = new Set([
   "头条",
 ]);
 const WAIT_SCHEDULE_CONFIRM_MS = 60 * 1000;
+const WAIT_SCHEDULE_INPUT_MS = 15 * 1000;
 
 export function supportsOfficialSchedule(platform) {
   return OFFICIAL_SCHEDULE_PLATFORMS.has(String(platform || "").trim());
@@ -68,21 +69,24 @@ async function replaceDateTimeInput(page, selector, value) {
   await pollPageUntil(
     page,
     (target) => {
-      const input = document.querySelector(target);
+      const input = [...document.querySelectorAll(target)].find((node) => {
+        const style = window.getComputedStyle(node);
+        const rect = node.getBoundingClientRect();
+        return style.display !== "none" && style.visibility !== "hidden" && rect.width > 0 && rect.height > 0;
+      });
       if (!input) return false;
-      const style = window.getComputedStyle(input);
-      const rect = input.getBoundingClientRect();
-      return style.display !== "none" && style.visibility !== "hidden" && rect.width > 0 && rect.height > 0;
+      input.id = "__mm_official_schedule_input";
+      return true;
     },
     selector,
-    WAIT_SELECTOR_APPEAR_MS,
+    WAIT_SCHEDULE_INPUT_MS,
     1500,
     `未找到可见的官方定时发布时间输入框：${selector}`
   );
   // 抖音和快手的日期输入框是 React 受控组件，部分页面还会设置 readonly。
   // 直接键盘输入会被日期面板的默认时间覆盖，因此使用原生 setter 并派发事件。
   await page.$eval(
-    selector,
+    "#__mm_official_schedule_input",
     (input, nextValue) => {
       input.removeAttribute("readonly");
       input.readOnly = false;
@@ -106,7 +110,7 @@ async function replaceDateTimeInput(page, selector, value) {
   await page.keyboard.press("Tab");
   await page.waitForTimeout(800);
 
-  const actual = await page.$eval(selector, (input) => input.value || "");
+  const actual = await page.$eval("#__mm_official_schedule_input", (input) => input.value || "");
   if (!String(actual).startsWith(value.slice(0, 16))) {
     throw new Error(`平台定时发布时间填写失败，页面当前值为: ${actual || "空"}`);
   }
@@ -122,7 +126,7 @@ async function setDouyinSchedule(page, publishAt) {
         return isRadio && norm(el.textContent).includes("定时发布");
       });
     },
-    { timeout: WAIT_SELECTOR_APPEAR_MS }
+    { timeout: WAIT_SCHEDULE_INPUT_MS }
   );
 
   const triggerId = await page.evaluate(() => {
