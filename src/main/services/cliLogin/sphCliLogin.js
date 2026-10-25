@@ -23,6 +23,7 @@ import {
   normalizeSphPartition,
 } from "./sphSessionUtil.js";
 import { applyAccountProxyForTask } from "../proxyConfig.js";
+import { verifyPublishLogin } from "./verifyPublishLogin.js";
 import {
   CLI_LOGIN_QR_FIRST_DELAY_MS,
   CLI_LOGIN_QR_REFRESH_MS,
@@ -347,7 +348,7 @@ export async function runSphCliLogin({
     console.warn("[sph-cli-login] 应用代理失败:", proxyErr && proxyErr.message);
   }
 
-  // 记住旧 sessionid，轮询时检测到不同值才算"新登录成功"
+  // 记住旧 sessionid，检测到新值后再验证真实发布页。
   // 不清除 cookie，避免破坏 login-for-iframe 页面加载
   const oldSessionId = await getSphSessionId(part);
   if (oldSessionId) {
@@ -379,6 +380,7 @@ export async function runSphCliLogin({
     let pollTimer = null;
     let qrTimer = null;
     let deadlineTimer = null;
+    let verifying = false;
     /** @type {import("electron").BrowserWindow | null} */
     let win = null;
 
@@ -544,17 +546,26 @@ export async function runSphCliLogin({
         console.log("请在浏览器窗口中完成视频号登录。partition:", part);
       }
 
-      // 轮询 sessionid Cookie —— 检测到与旧值不同的新 sessionid 才算登录成功
+      // 新凭证出现后，还必须通过真实发布页验证，才报告登录成功。
       pollTimer = setInterval(() => {
+        if (verifying || settled) return;
         getSphSessionId(part)
-          .then((newId) => {
+          .then(async (newId) => {
             if (!newId || settled) return;
             // 无旧值 → 新出现即可；有旧值 → 必须不同
             if (!oldSessionId || newId !== oldSessionId) {
-              finish(0, {
-                clearTerminal: true,
-                log: "视频号登录成功，会话已写入 partition，可执行 cli publish。",
-              });
+              verifying = true;
+              try {
+                await verifyPublishLogin(piePage, "视频号");
+                await finish(0, {
+                  clearTerminal: true,
+                  log: "视频号登录成功，真实发布页验证通过，会话已保存。",
+                });
+              } catch (error) {
+                console.error("视频号真实发布页验证未通过:", error.message);
+              } finally {
+                verifying = false;
+              }
             }
           })
           .catch((e) => {

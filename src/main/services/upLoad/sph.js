@@ -9,7 +9,6 @@ import { attachSphVideoLink } from "./sphLink.js";
 import {
   WAIT_SELECTOR_APPEAR_MS,
   WAIT_UPLOAD_PROCESSING_MS,
-  pollPageUntil,
 } from "./uploadTimeouts.js";
 import { setOfficialSchedule } from "./officialSchedule.js";
 
@@ -384,19 +383,20 @@ async function ensureSphFileSelected(page, filePath, attempts = 3) {
 }
 
 async function waitSphUploadProcessing(page) {
-  await pollPageUntil(
-    page,
-    () => {
+  const deadline = Date.now() + WAIT_UPLOAD_PROCESSING_MS;
+  let lastProgress = "";
+  let lastProgressAt = Date.now();
+  while (Date.now() < deadline) {
+    if (page.isClosed()) throw new Error("视频号发布页面已关闭，停止等待");
+    const state = await page.evaluate(() => {
       const app = document.querySelector("wujie-app.wujie_iframe");
-      if (!app || !app.shadowRoot) return false;
+      if (!app || !app.shadowRoot) return { done: false, progress: "页面加载中", stallMs: 90000 };
       const root = app.shadowRoot;
       const pageText = String(root.textContent || "").replace(/\s+/g, " ");
       // 「删除」标签从上传开始就会出现，不能作为完成标志。平台在未完成时会明确
       // 显示“文件上传中，请等待完成后再编辑”，此时发表按钮虽无 disabled 属性，
       // 实际仍是灰色且点击无效。
-      if (/文件上传中|正在上传|上传中，请等待|视频处理中|正在处理/.test(pageText)) {
-        return false;
-      }
+      const processing = /文件上传中|正在上传|上传中，请等待|视频处理中|正在处理/.test(pageText);
       const progressTexts = Array.from(
         root.querySelectorAll('.ant-progress, [class*="progress"], [role="progressbar"]')
       )
@@ -407,25 +407,36 @@ async function waitSphUploadProcessing(page) {
         })
         .map((node) => {
           const aria = node.getAttribute("aria-valuenow");
-          if (aria !== null && aria !== "" && Number(aria) < 100) return "0%";
+          if (aria !== null && aria !== "") return `${Number(aria)}%`;
           const matched = String(node.textContent || "").match(/(\d+(?:\.\d+)?)\s*%/);
           return matched ? `${matched[1]}%` : "";
         });
-      if (progressTexts.some((text) => {
-        const match = text.match(/(\d+(?:\.\d+)?)\s*%/);
-        return match && Number(match[1]) < 100;
-      })) {
-        return false;
-      }
+      const percentages = progressTexts.filter(Boolean).map((text) => Number(text.replace("%", "")));
+      const percentage = percentages.length ? Math.min(...percentages) : null;
       const form = root.querySelector(".form-btns");
       const publishGroup = form && form.querySelector(":scope > div:last-child");
-      return Boolean(publishGroup && publishGroup.querySelector("button,[role='button']"));
-    },
-    WAIT_UPLOAD_PROCESSING_MS,
-    2000,
-    "等待视频处理超时（上传提示或进度条一直未结束）"
-  );
-  await page.waitForTimeout(2000);
+      return {
+        done: !processing && (percentage === null || percentage >= 100) &&
+          Boolean(publishGroup && publishGroup.querySelector("button,[role='button']")),
+        progress: percentage === null ? "平台处理中" : `${percentage}%`,
+        stallMs: percentage === 0 ? 90000 : percentage !== null && percentage < 100 ? 180000 : 300000,
+      };
+    });
+    if (state.done) {
+      await page.waitForTimeout(2000);
+      return;
+    }
+    if (state.progress !== lastProgress) {
+      lastProgress = state.progress;
+      lastProgressAt = Date.now();
+      console.log(`[sph] 上传处理进度：${state.progress}`);
+    }
+    if (Date.now() - lastProgressAt >= state.stallMs) {
+      throw new Error(`视频号上传处理停滞：${state.progress} 持续 ${Math.round(state.stallMs / 1000)} 秒无变化，尚未提交`);
+    }
+    await page.waitForTimeout(2000);
+  }
+  throw new Error("等待视频处理超时（上传提示或进度条一直未结束）");
 }
 
 /** 沿用项目原有的点击输入框 + keyboard.type 文案填写方式。 */

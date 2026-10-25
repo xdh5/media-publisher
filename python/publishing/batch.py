@@ -151,8 +151,8 @@ def _publish_browser(target: dict, account: dict, spec: PlatformSpec, timing: di
     if spec.code == "wechat_channels" and target["sph_product_id"]:
         arguments.extend(["--sph-product-id", target["sph_product_id"]])
     payload = run_browser_publish(arguments)
-    status = str(payload.get("status") or payload.get("resultStatus") or "success")
-    if status in {"needs_attention", "failed", "failure"}:
+    status = str(payload.get("resultStatus") or payload.get("status") or "success")
+    if payload.get("status") is False or status in {"needs_attention", "failed", "failure"}:
         raise RuntimeError(f"{spec.label}发布未成功：{payload.get('message') or status}")
     if timing["publish_mode"] == "scheduled" and spec.schedule == "browser_official" and payload.get("officialScheduled") is not True:
         raise RuntimeError(f"{spec.label}未确认平台官方预约成功，不能把应用内定时记为成功")

@@ -36,6 +36,7 @@ export async function pollPageUntil(page, pageFn, argsOrTotalMs, totalOrStepMs, 
   const timeoutMessage = hasArgs ? maybeMessage : stepOrMessage;
   const deadline = Date.now() + totalMs;
   while (Date.now() < deadline) {
+    if (page.isClosed()) throw new Error("发布页面已关闭，停止等待");
     const ok = await page.evaluate(pageFn, args).catch(() => false);
     if (ok) return;
     await page.waitForTimeout(stepMs);
