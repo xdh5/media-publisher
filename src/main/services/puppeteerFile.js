@@ -543,6 +543,10 @@ async function doUpload(data, transport, queueDone, runtimeTask) {
         });
         page = await pie.getPage(browser, win);
       }
+      if (["抖音", "视频号"].includes(data.pt)) {
+        win.show();
+        win.focus();
+      }
       activeWin = win;
       activeBrowser = browser;
       openPublishWindows.add(win);
