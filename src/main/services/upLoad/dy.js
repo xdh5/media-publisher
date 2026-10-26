@@ -430,7 +430,7 @@ export default async function (page, data, window, event) {
     const previousUrl = page.url();
     await clickDyPublish(page, isDraftMode);
     if (isOfficialSchedule) {
-      await waitForOfficialScheduleAccepted(page, "抖音", previousUrl, data.title);
+      await waitForOfficialScheduleAccepted(page, "抖音", previousUrl, data.title, window);
     }
     console.log(
       isDraftMode

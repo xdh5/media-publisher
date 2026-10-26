@@ -1,3 +1,4 @@
+import fs from "fs";
 "use strict";
 
 import { WAIT_SELECTOR_APPEAR_MS, pollPageUntil } from "./uploadTimeouts.js";
@@ -1256,9 +1257,29 @@ async function confirmDouyinScheduledItem(page, expectedTitle) {
   }
 }
 
-export async function waitForOfficialScheduleAccepted(page, platform, previousUrl, expectedTitle = "") {
-  const deadline = Date.now() + WAIT_SCHEDULE_CONFIRM_MS;
+export async function waitForOfficialScheduleAccepted(page, platform, previousUrl, expectedTitle = "", publishWindow = null) {
+  let deadline = Date.now() + WAIT_SCHEDULE_CONFIRM_MS;
+  let verificationShown = false;
   while (Date.now() < deadline) {
+    if (platform === "抖音" && !verificationShown) {
+      const requiresVerification = await page.evaluate(() => {
+        const text = document.body.innerText;
+        return text.includes("接收短信验证码") && text.includes("获取验证码");
+      }).catch(() => false);
+      if (requiresVerification) {
+        verificationShown = true;
+        deadline = Date.now() + 20 * 60 * 1000;
+        if (publishWindow) {
+          publishWindow.show();
+          publishWindow.focus();
+        }
+        const interaction = { platform: "douyin", status: "verification_required", message: "抖音需要短信验证，请在已打开的发布窗口完成验证", updated_at: new Date().toISOString() };
+        if (process.env.MEDIA_PUBLISHER_INTERACTION_PATH) {
+          fs.writeFileSync(process.env.MEDIA_PUBLISHER_INTERACTION_PATH, JSON.stringify(interaction), "utf8");
+        }
+        console.log("[auth] " + interaction.message);
+      }
+    }
     const accepted = await page.evaluate((expectedUrl, platformName) => {
       const currentUrl = location.href;
       if (
@@ -1299,7 +1320,12 @@ export async function waitForOfficialScheduleAccepted(page, platform, previousUr
       }
       return false;
     }, previousUrl, platform).catch(() => false);
-    if (accepted) return;
+    if (accepted) {
+      if (verificationShown && process.env.MEDIA_PUBLISHER_INTERACTION_PATH) {
+        fs.rmSync(process.env.MEDIA_PUBLISHER_INTERACTION_PATH, { force: true });
+      }
+      return;
+    }
 
     if (
       platform === "抖音" &&
