@@ -33,8 +33,8 @@ export async function probeAccountSessions(accounts) {
         });
         const page = await pie.getPage(browser, win);
         await page.setUserAgent(ptConfig[account.pt].useragent);
-        await page.goto(ptConfig[account.pt].upload, { waitUntil: "domcontentloaded", timeout: 15000 });
-        const result = await probeRealPublishSession(page, account.pt, 15000);
+        await page.goto(ptConfig[account.pt].upload, { waitUntil: "domcontentloaded", timeout: 30000 });
+        const result = await probeRealPublishSession(page, account.pt, 30000);
         return { loggedIn: result.ok ? true : result.loginRequired ? false : null,
           status: result.ok ? "connected" : result.loginRequired ? "login_required" : "error",
           loginRequired: result.loginRequired === true, realSessionProbe: true,
