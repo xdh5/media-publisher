@@ -1270,6 +1270,9 @@ export async function waitForOfficialScheduleAccepted(page, platform, previousUr
         verificationShown = true;
         deadline = Date.now() + 20 * 60 * 1000;
         if (publishWindow) {
+          publishWindow.setOpacity(1);
+          publishWindow.setSkipTaskbar(false);
+          publishWindow.setFocusable(true);
           publishWindow.show();
           publishWindow.focus();
         }

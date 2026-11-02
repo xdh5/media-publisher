@@ -544,8 +544,15 @@ async function doUpload(data, transport, queueDone, runtimeTask) {
         page = await pie.getPage(browser, win);
       }
       if (["抖音", "视频号"].includes(data.pt)) {
-        win.show();
-        win.focus();
+        if (data.show && !data.mmCliSuppressWindow) {
+          win.show();
+        } else {
+          // 后台窗口保留页面渲染，不显示内容、不占任务栏、不抢焦点。
+          win.setOpacity(0);
+          win.setSkipTaskbar(true);
+          win.setFocusable(false);
+          win.showInactive();
+        }
       }
       activeWin = win;
       activeBrowser = browser;
