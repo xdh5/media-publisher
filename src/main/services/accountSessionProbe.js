@@ -1,5 +1,9 @@
 "use strict";
 
+import path from "path";
+import os from "os";
+import { randomUUID } from "crypto";
+
 import { app, BrowserWindow } from "electron";
 import pie from "puppeteer-in-electron";
 import puppeteerCore from "puppeteer-core";
@@ -35,10 +39,15 @@ export async function probeAccountSessions(accounts) {
         await page.setUserAgent(ptConfig[account.pt].useragent);
         await page.goto(ptConfig[account.pt].upload, { waitUntil: "domcontentloaded", timeout: 30000 });
         const result = await probeRealPublishSession(page, account.pt, 30000);
+        let screenshotPath = null;
+        if (!result.ok && !result.loginRequired) {
+          screenshotPath = path.join(os.tmpdir(), `media-publisher-probe-${randomUUID()}.png`);
+          await page.screenshot({ path: screenshotPath });
+        }
         return { loggedIn: result.ok ? true : result.loginRequired ? false : null,
           status: result.ok ? "connected" : result.loginRequired ? "login_required" : "error",
           loginRequired: result.loginRequired === true, realSessionProbe: true,
-          checkedAt: new Date().toISOString(), reason: result.reason, currentUrl: result.currentUrl };
+          checkedAt: new Date().toISOString(), reason: result.reason, currentUrl: result.currentUrl, screenshotPath };
       } catch (error) {
         return { loggedIn: null, status: "error", loginRequired: false, realSessionProbe: true,
           checkedAt, reason: `发布页检测失败：${error.message}` };
