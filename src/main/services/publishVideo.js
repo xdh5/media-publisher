@@ -174,7 +174,6 @@ async function runSingleFilePublishInner(
     phone: derivePhoneForRecord(v),
     filePath: resolvedFile,
     pt: v.platform,
-    useRealBrowser: Boolean(v.useRealBrowser),
     reuseSessionKey: v.reuseSessionKey || "",
     reuseSessionFinal: v.reuseSessionFinal === true,
   };
@@ -243,7 +242,7 @@ async function runSingleFilePublishInner(
             id: recordId,
             publishMode: completion.savedAsDraft ? "draft" : "publish",
             outcome: payload && payload.outcome,
-            needsAttention: completion.fallbackDraft,
+            needsAttention: completion.fallbackDraft || payload?.needsAttention === true,
           });
         } else if (channel === "puppeteer-noLogin") {
           if (payload && payload.taskId != null && payload.taskId !== taskId) {
@@ -260,6 +259,7 @@ async function runSingleFilePublishInner(
             loginRequired: true,
             realSessionProbe: payload && payload.realSessionProbe === true,
             supportsQrLogin: payload && payload.supportsQrLogin === true,
+            loginUrl: payload?.loginUrl,
           });
         }
       },

@@ -2,7 +2,10 @@
 
 import { isPlatformLoginUrl, KUAISHOU_VIDEO_UPLOAD_SELECTOR } from "../../shared/platformPageState.js";
 
+import { XIAOHONGSHU_VIDEO_INPUT } from "./upLoad/xiaohongshuVideo.js";
+
 const READY_SELECTORS = {
+  小红书: [XIAOHONGSHU_VIDEO_INPUT],
   抖音: ['input[name="upload-btn"]'],
   快手: [KUAISHOU_VIDEO_UPLOAD_SELECTOR],
   百家号: [
@@ -18,6 +21,7 @@ const READY_SELECTORS = {
 };
 
 const LOGIN_SELECTORS = {
+  小红书: ["div[class*='login-box']"],
   抖音: [
     "#animate_qrcode_container",
     'iframe[src*="passport"]',

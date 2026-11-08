@@ -15,7 +15,6 @@ import {
   getPublishAttemptLimit,
   isXhsPlatform,
 } from "../../shared/xhsPublishPolicy.js";
-import { publishWithXhsChrome } from "./xhsChromePublisher.js";
 import { isPlatformLoginUrl } from "../../shared/platformPageState.js";
 import {
   needsRealPublishSessionProbe,
@@ -157,7 +156,7 @@ async function doUpload(data, transport, queueDone) {
       ) {
         // 官方定时发布已经完成上传并操作平台页面，失败后自动重试可能重复提交。
         // 直接返回真实失败结果，让调用方决定是否按新时间重新发起。
-        if (data.officialScheduledPublish) {
+        if (isXhsTask || data.officialScheduledPublish) {
           const replied = transport.reply(channel, ...args);
           finishOnce();
           return replied;
@@ -177,26 +176,8 @@ async function doUpload(data, transport, queueDone) {
     },
   });
 
-  // 小红书 + 真实 Chrome 浏览器发布（替代 Electron BrowserWindow）
-  let useElectronForXhs = false;
-
   const createWindowAndAttempt = async () => {
     if (finished) return;
-
-    // 小红书 + 真实浏览器模式开关（fallback 时跳过，避免循环）
-    if (isXhsTask && data.useRealBrowser && !useElectronForXhs) {
-      return publishWithXhsChrome(data, createAttemptTransport(), {
-        isFinished: () => finished,
-        onUnavailable: () => {
-          useElectronForXhs = true;
-          return createWindowAndAttempt();
-        },
-        onFailure: (message) => {
-          safeReply("puppeteerFile-done", { ...data, status: false, message });
-          finishOnce();
-        },
-      });
-    }
 
     currentAttempt++;
     if (currentAttempt > maxRetries) {
@@ -370,11 +351,10 @@ async function doUpload(data, transport, queueDone) {
         }
       }
 
-      if (data.pt.indexOf("视频") !== -1) {
-        // 视频号原来用 page.goto + domcontentloaded，保持不变避免回归。
+      if (isXhsTask || data.pt.indexOf("视频") !== -1) {
         await page.goto(data.url, {
           waitUntil: "domcontentloaded",
-          timeout: 60000,
+          timeout: isXhsTask ? 120000 : 60000,
         });
       } else {
         await win.loadURL(data.url);
@@ -463,6 +443,8 @@ async function doUpload(data, transport, queueDone) {
                   message,
                   realSessionProbe: true,
                   supportsQrLogin,
+                  ...(isXhsTask && sessionProbe.loginRequired
+                    ? { loginUrl: "https://creator.xiaohongshu.com/login" } : {}),
                 });
                 finishOnce();
                 if (win && !win.isDestroyed()) {
@@ -502,6 +484,7 @@ async function doUpload(data, transport, queueDone) {
                 ...data,
                 currentUrl,
                 message,
+                ...(isXhsTask ? { loginUrl: "https://creator.xiaohongshu.com/login" } : {}),
               });
               finishOnce();
               if (win && !win.isDestroyed()) {
@@ -532,7 +515,7 @@ async function doUpload(data, transport, queueDone) {
               ...data,
               ...failurePayload,
               status: false,
-              message: (failurePayload && failurePayload.message) || "执行失败",
+              message: failurePayload?.message || err.message || "执行失败",
             });
             if (!isXhsTask && !data.show && win && !win.isDestroyed())
               closePublishWinProgrammatically(win);

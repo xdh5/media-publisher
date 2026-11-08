@@ -67,6 +67,10 @@ export async function runCliMain(argv = process.argv) {
         const { runKsCliLogin } = await import("../services/cliLogin/ksCliLogin.js");
         return await runKsCliLogin(loginOpts);
       }
+      if (v.platform === "小红书") {
+        const { runXiaohongshuCliLogin } = await import("../services/cliLogin/xiaohongshuCliLogin.js");
+        return await runXiaohongshuCliLogin(loginOpts);
+      }
       if (v.platform === "头条") {
         const { runTtCliLogin } = await import("../services/cliLogin/ttCliLogin.js");
         return await runTtCliLogin(loginOpts);

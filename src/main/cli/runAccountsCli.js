@@ -8,7 +8,7 @@ import { runOfficialPython } from "../services/officialPython";
 import { accountGroupFromArgv } from "../services/matrixDataPaths";
 import { probeAccountSessions } from "../services/accountSessionProbe.js";
 
-const ACCOUNT_PLATFORMS = new Set(["抖音", "百家号", "头条", "视频号", "哔哩哔哩", "快手"]);
+const ACCOUNT_PLATFORMS = new Set(["抖音", "百家号", "头条", "视频号", "哔哩哔哩", "快手", "小红书"]);
 
 function getAccountsDir() {
   const documents = app.getPath("documents");
@@ -126,7 +126,7 @@ export async function runAccountsCli(options) {
     r.pt,
     r.loggedIn === true ? "已验证" : r.loginRequired ? "需要登录" : "检测失败",
     r.checkedAt || "-",
-    r.reason || "-",
+    [r.reason, r.loginUrl].filter(Boolean).join(" ") || "-",
   ]);
   const widths = header.map((h, i) =>
     Math.max(displayWidth(h), ...lines.map(row => displayWidth(row[i])))

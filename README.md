@@ -6,12 +6,15 @@
 
 感谢原作者 [@hanliang97](https://github.com/hanliang97)。本仓库参考了 [MatrixMedia](https://github.com/hanliang97/MatrixMedia)。
 
+小红书视频发布流程移植自 [social-auto-upload v1.0.0-skills.2](https://github.com/dreammis/social-auto-upload/tree/7023053ec4c21bc85901cb5a66302f889ddc7fa9)，使用本工具的账号会话。上游许可证见 [MIT 许可证](./LICENSE.social-auto-upload)。
+
 ## 平台
 
 | 平台 | 发布方式 | 登录 | 预约 |
 | --- | --- | --- | --- |
 | 抖音、快手、头条、视频号、百家号 | 浏览器 | 抖音、快手、头条、视频号可扫码 | 转为北京时间，由平台官方确认 |
-| 哔哩哔哩、小红书 | 浏览器 | 使用已有登录态 | 只能立即发布 |
+| 哔哩哔哩 | 浏览器 | 使用已有登录态 | 只能立即发布 |
+| 小红书 | 浏览器 | 创作者中心扫码，支持真实发布页预检 | 只能立即发布或保存草稿 |
 | YouTube、TikTok、Instagram、Facebook | 官方接口 | 系统浏览器授权 | 把带时区的时间交给官方接口 |
 
 账号放在 `data/finance`、`data/korean`、`data/chinese`。浏览器 Cookie 在对应账号组的 `Partitions` 里，海外平台凭据在该账号组的环境变量里。
@@ -31,7 +34,8 @@
 ```bash
 media-publisher cli login -p dy --phone 13800138000
 media-publisher cli publish -p dy --phone 13800138000 -f ./video.mp4 -t "标题"
-media-publisher cli accounts --json
+media-publisher cli login -p xhs --phone korean
+media-publisher cli accounts -p xhs --phone korean --json
 ```
 
 开发时在项目根目录执行：

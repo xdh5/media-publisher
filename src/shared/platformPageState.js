@@ -35,6 +35,9 @@ export function isPlatformLoginUrl(platform, currentUrl) {
         (host === "mp.toutiao.com" && pathname.includes("/login"))
       );
     }
+    if (pt === "小红书") {
+      return host === "creator.xiaohongshu.com" && /^\/login(?:\/|$)/.test(pathname);
+    }
     if (pt === "视频号") {
       return (
         url.origin === "https://channels.weixin.qq.com" &&

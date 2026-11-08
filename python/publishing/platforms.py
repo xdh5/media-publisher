@@ -23,7 +23,7 @@ _PLATFORMS = (
     PlatformSpec("wechat_channels", "sph", "视频号", "browser", "browser_official", "视频号", True),
     PlatformSpec("baijiahao", "bjh", "百家号", "browser", "browser_official", "百家号", False),
     PlatformSpec("bilibili", "blbl", "哔哩哔哩", "browser", "unsupported", "哔哩哔哩", False),
-    PlatformSpec("xiaohongshu", "xhs", "小红书", "browser", "unsupported", "小红书", False),
+    PlatformSpec("xiaohongshu", "xhs", "小红书", "browser", "unsupported", "小红书", True),
     PlatformSpec("youtube", "youtube", "YouTube", "official", "api_official", "", False),
     PlatformSpec("tiktok", "tiktok", "TikTok", "official", "api_official", "", False),
     PlatformSpec("instagram", "instagram", "Instagram", "official", "api_official", "", False),
