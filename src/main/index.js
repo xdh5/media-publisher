@@ -47,7 +47,6 @@ app.commandLine.appendSwitch("disable-features", "OutOfBlinkCors");
 
 async function startApplication() {
   try {
-    await acquireMatrixSession(app);
     const parentPid = Number(process.env.MEDIA_PUBLISHER_PARENT_PID);
     if (parentPid) {
       setInterval(() => {
@@ -55,7 +54,8 @@ async function startApplication() {
         catch (error) { if (error.code === "ESRCH") app.exit(1); }
       }, 2000).unref();
     }
-    await initializeElectronRuntime({ app, pie });
+    // 调试端口必须在 ready 前注册，账号组锁只阻止后续 CLI 访问会话。
+    await Promise.all([initializeElectronRuntime({ app, pie }), acquireMatrixSession(app)]);
     reportUsageTelemetry(app, "cli").catch(() => {});
     console.log("[startup] CLI 参数已识别，开始执行命令");
     const code = await runCliMain(process.argv);
