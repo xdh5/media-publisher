@@ -54,6 +54,12 @@ electron . cli accounts --help
 cd mcp && npm install && npm run build
 ```
 
+## 小红书账号与内容核对
+
+发布前使用 `cli accounts -p xhs --phone <账号组>` 检查真实视频发布页。先核对素材和创作声明，含 AI 合成内容时如实标注。需要人工审核可保存草稿，由账号所有者在创作者中心检查后提交。
+
+发布窗口保持可见。出现安全验证、频率限制或疑似自动化提示时暂停，批量任务遇到小红书失败后停止提交后续小红书作品。提交结果不明时先查作品管理。发布页验证仅确认当前会话可打开上传表单，平台审核与账号处置以创作者中心为准。参见 [上游小红书说明](https://github.com/dreammis/social-auto-upload/blob/7023053ec4c21bc85901cb5a66302f889ddc7fa9/skills/xiaohongshu-upload/SKILL.md) 和 [上游风控反馈](https://github.com/dreammis/social-auto-upload/issues/289)。
+
 ## 开发
 
 需要 Node.js 20。

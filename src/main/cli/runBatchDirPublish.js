@@ -200,6 +200,10 @@ export async function runBatchDirPublish(v, cfg) {
     };
     results.push(r);
     console.log(JSON.stringify({ progress: true, done: true, ...r }));
+    if (v.platform === "小红书" && !taskResult.ok) {
+      console.error("小红书批量发布已停止，请核对创作者中心后再继续");
+      break;
+    }
   }
 
   const succeeded = results.filter((r) => r.status === "success").length;
@@ -212,6 +216,7 @@ export async function runBatchDirPublish(v, cfg) {
       total: rows.length,
       succeeded,
       failed,
+      unprocessed: rows.length - results.length,
       message: "成功 " + succeeded + " / 失败 " + failed,
       results,
     })

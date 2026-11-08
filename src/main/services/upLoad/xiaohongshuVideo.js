@@ -10,6 +10,21 @@ const DESCRIPTION_INPUT = 'p[data-placeholder*="输入正文描述"]';
 const TOPIC_OPTION = "#creator-editor-topic-container .item";
 const FORM_TIMEOUT_MS = 30000;
 
+// 只识别可见的拦截提示，避免把正文里的相同文字当成风控。
+function inspectSubmissionPage(mode) {
+  const notices = Array.from(document.querySelectorAll(
+    '[role="alert"], [role="dialog"], [class*="toast"], [class*="modal"], [class*="message"]'
+  )).filter((node) => node.getClientRects().length && getComputedStyle(node).visibility === "visible");
+  const blocked = notices.find((node) => /安全验证|操作频繁|疑似.*(?:自动化|托管)|账号异常|账号.*封禁|限制发布|禁止发布/.test(node.innerText));
+  if (blocked) return { blocked: blocked.innerText.trim().slice(0, 160) };
+  if (mode === "publish" && location.origin === "https://creator.xiaohongshu.com" &&
+      location.pathname === "/publish/success") return { confirmed: true };
+  if (mode === "draft" && notices.some((node) =>
+    /^(草稿保存成功|已保存草稿|草稿已保存|保存草稿成功|已保存至草稿箱|暂存成功)$/.test(node.innerText?.trim())
+  )) return { confirmed: true };
+  return false;
+}
+
 async function fillMetadata(page, metadata) {
   const title = await page.waitForSelector(TITLE_INPUT, { visible: true, timeout: FORM_TIMEOUT_MS });
   await title.click({ clickCount: 3 });
@@ -118,35 +133,39 @@ async function clickSubmit(page, label) {
 export default async function publishXiaohongshuVideo(page, data, window, event) {
   const draft = data.publishMode === "draft" || data.publishToDraft === true;
   const label = draft ? "暂存离开" : "发布";
-  const input = await page.waitForSelector(XIAOHONGSHU_VIDEO_INPUT, { timeout: FORM_TIMEOUT_MS });
-  await input.uploadFile(path.resolve(data.filePath));
-
-  // 预览出现后继续填写，提交前等待平台报告上传完成。
-  await fillMetadata(page, data.data);
-  await pollPageUntil(page, () => {
-    return Array.from(document.querySelectorAll(".preview-new, .video-plugin-title-action"))
-      .some((element) => /上传成功|重新上传/.test(element.innerText));
-  }, WAIT_UPLOAD_PROCESSING_MS, 2000, "小红书未确认视频上传完成");
-
-  const pkCover = await page.$(".pk-cover-title-wrapper input:checked");
-  if (pkCover) await pkCover.click();
-  await applyCreativeStatement(page, data.data.creativeStatement);
-
   let submitting = false;
   try {
+    const beforeUpload = await page.evaluate(inspectSubmissionPage, "check");
+    if (beforeUpload?.blocked) throw new Error(`小红书上传已暂停：${beforeUpload.blocked}`);
+    const input = await page.waitForSelector(XIAOHONGSHU_VIDEO_INPUT, { timeout: FORM_TIMEOUT_MS });
+    await input.uploadFile(path.resolve(data.filePath));
+
+    // 预览出现后继续填写，提交前等待平台报告上传完成。
+    await fillMetadata(page, data.data);
+    await pollPageUntil(page, () => {
+      return Array.from(document.querySelectorAll(".preview-new, .video-plugin-title-action"))
+        .some((element) => /上传成功|重新上传/.test(element.innerText));
+    }, WAIT_UPLOAD_PROCESSING_MS, 2000, "小红书未确认视频上传完成");
+
+    const pkCover = await page.$(".pk-cover-title-wrapper input:checked");
+    if (pkCover) await pkCover.click();
+    await applyCreativeStatement(page, data.data.creativeStatement);
+
     await page.waitForSelector("xhs-publish-btn, .publish-page-publish-btn", {
       visible: true, timeout: FORM_TIMEOUT_MS,
     });
+    const before = await page.evaluate(inspectSubmissionPage, "check");
+    if (before?.blocked) throw new Error(`小红书发布已暂停：${before.blocked}`);
     submitting = true;
     await clickSubmit(page, label);
-    await pollPageUntil(page, (isDraft) => {
-      if (!isDraft) {
-        return location.origin === "https://creator.xiaohongshu.com" &&
-          location.pathname === "/publish/success";
-      }
-      return Array.from(document.querySelectorAll('[role="alert"], [class*="toast"], [class*="message"]'))
-        .some((element) => /^(草稿保存成功|已保存草稿|草稿已保存|保存草稿成功|已保存至草稿箱|暂存成功)$/.test(element.innerText?.trim()));
-    }, draft, FORM_TIMEOUT_MS, 250, `小红书未确认「${label}」结果`);
+    const receipt = await page.waitForFunction(inspectSubmissionPage, {
+      timeout: FORM_TIMEOUT_MS, polling: 250,
+    }, draft ? "draft" : "publish").catch((error) => {
+      if (error.name !== "TimeoutError") throw error;
+      throw new Error(`小红书未确认「${label}」结果`);
+    });
+    const result = await receipt.jsonValue();
+    if (result.blocked) throw new Error(`小红书发布已暂停：${result.blocked}`);
     event.reply("puppeteerFile-done", {
       ...data, status: true, message: draft ? "保存草稿成功" : "上传成功",
     });

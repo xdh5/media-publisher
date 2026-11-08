@@ -194,6 +194,7 @@ def publish_batch(request: dict, progress=None, *, account_routes: dict | None =
     targets = expanded
     published = []
     failed = []
+    xiaohongshu_paused = False
     total = len(targets)
     for index, target in enumerate(targets, start=1):
         spec = resolve_platform(target["platform"])
@@ -209,6 +210,8 @@ def publish_batch(request: dict, progress=None, *, account_routes: dict | None =
         if progress:
             progress(f"正在发布 {index}/{total}：{spec.code} - {target['title']}")
         try:
+            if spec.code == "xiaohongshu" and xiaohongshu_paused:
+                raise PublishError("小红书发布已暂停，请核对创作者中心后再继续")
             account = accounts.get(target["account_key"] or spec.code)
             if not account:
                 raise PublishError(f"请为 {spec.label} 指定唯一的 account_key")
@@ -221,6 +224,8 @@ def publish_batch(request: dict, progress=None, *, account_routes: dict | None =
             else:
                 result = _publish_browser(target, account, spec, timing)
         except Exception as exc:
+            if spec.code == "xiaohongshu":
+                xiaohongshu_paused = True
             failed.append({
                 "platform": spec.code,
                 "title": target["title"],
