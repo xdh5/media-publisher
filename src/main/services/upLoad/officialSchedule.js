@@ -12,6 +12,7 @@ const OFFICIAL_SCHEDULE_PLATFORMS = new Set([
   "视频号",
   "百家号",
   "头条",
+  "小红书",
 ]);
 
 export function supportsOfficialSchedule(platform) {

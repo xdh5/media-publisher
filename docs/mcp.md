@@ -103,7 +103,8 @@ cd mcp && npm install && npm run build
 
 - 抖音、快手、头条、视频号、百家号：转成北京时间 `YYYY-MM-DD HH:mm:ss`，必须由平台官方预约确认。
 - YouTube、TikTok、Instagram、Facebook：原样把带时区的 ISO 时间交给官方接口。
-- 哔哩哔哩、小红书：只能立即发布。
+- 小红书：支持平台预约发布，发布时间精确到分钟。
+- 哔哩哔哩：只能立即发布。
 
 示例：
 

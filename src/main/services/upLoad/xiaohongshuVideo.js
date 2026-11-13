@@ -82,6 +82,27 @@ async function applyCreativeStatement(page, value) {
   }, { timeout: FORM_TIMEOUT_MS }, label);
 }
 
+// 定时表单参考 social-auto-upload 3847fff，许可证见项目根目录。
+async function setXiaohongshuSchedule(page, publishAt) {
+  const toggle = await page.waitForXPath(
+    '//div[contains(concat(" ", normalize-space(@class), " "), " custom-switch-card ")][contains(., "定时发布")]//*[contains(concat(" ", normalize-space(@class), " "), " d-switch ")]',
+    { visible: true, timeout: FORM_TIMEOUT_MS },
+  );
+  await toggle.click();
+
+  const timeInput = await page.waitForSelector(".d-datepicker-input-filter input.d-text", {
+    visible: true, timeout: FORM_TIMEOUT_MS,
+  });
+  const publishMinute = publishAt.slice(0, 16);
+  await timeInput.click({ clickCount: 3 });
+  await page.keyboard.press("Backspace");
+  await timeInput.type(publishMinute);
+  await page.keyboard.press("Tab");
+  if (await timeInput.evaluate((input) => input.value) !== publishMinute) {
+    throw new Error("小红书页面未接受指定的定时发布时间");
+  }
+}
+
 async function clickSubmit(page, label) {
   // 创作者中心新版按钮在闭合的影子根中，通过 CDP 读取按钮并按实际坐标点击。
   const client = await page.target().createCDPSession();
@@ -132,7 +153,8 @@ async function clickSubmit(page, label) {
 
 export default async function publishXiaohongshuVideo(page, data, window, event) {
   const draft = data.publishMode === "draft" || data.publishToDraft === true;
-  const label = draft ? "暂存离开" : "发布";
+  const scheduled = data.officialScheduledPublish === true;
+  const label = scheduled ? "定时发布" : draft ? "暂存离开" : "发布";
   let submitting = false;
   try {
     const beforeUpload = await page.evaluate(inspectSubmissionPage, "check");
@@ -154,6 +176,7 @@ export default async function publishXiaohongshuVideo(page, data, window, event)
     await page.waitForSelector("xhs-publish-btn, .publish-page-publish-btn", {
       visible: true, timeout: FORM_TIMEOUT_MS,
     });
+    if (scheduled) await setXiaohongshuSchedule(page, data.publishAt);
     const before = await page.evaluate(inspectSubmissionPage, "check");
     if (before?.blocked) throw new Error(`小红书发布已暂停：${before.blocked}`);
     submitting = true;
@@ -167,7 +190,8 @@ export default async function publishXiaohongshuVideo(page, data, window, event)
     const result = await receipt.jsonValue();
     if (result.blocked) throw new Error(`小红书发布已暂停：${result.blocked}`);
     event.reply("puppeteerFile-done", {
-      ...data, status: true, message: draft ? "保存草稿成功" : "上传成功",
+      ...data, status: true, officialScheduled: scheduled,
+      message: scheduled ? "定时发布成功" : draft ? "保存草稿成功" : "上传成功",
     });
     maybeClosePublishWindow(draft ? { ...data, closeWindowAfterPublish: true } : data, window);
   } catch (error) {
