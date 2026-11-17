@@ -28,10 +28,27 @@ export async function runCliMain(argv = process.argv) {
     console.error("  cli publish --help");
     console.error("  cli login --help");
     console.error("  cli accounts --help");
+    console.error("  cli douyin-creator-works --phone <账号组> <接口配置>");
     return 2;
   }
 
   const cmd = sub[0];
+  if (cmd === "douyin-creator-works") {
+    const [, flag, phone, endpoints] = sub;
+    if (flag !== "--phone" || !phone || !endpoints) {
+      console.error("用法：cli douyin-creator-works --phone <账号组> <接口配置>");
+      return 2;
+    }
+    const { readDouyinCreatorWorks } = await import("../services/douyinCreatorWorks.js");
+    try {
+      writeCliJson(await readDouyinCreatorWorks(phone, JSON.parse(endpoints)));
+      return 0;
+    } catch (error) {
+      writeCliJson({ message: error.message });
+      return 3;
+    }
+  }
+
   if (cmd === "login") {
     const parsed = parseLoginArgs(sub.slice(1));
     if (!parsed.ok) {

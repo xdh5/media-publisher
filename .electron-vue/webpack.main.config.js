@@ -25,7 +25,8 @@ let mainConfig = {
     rules: [
       {
         test: /\.js$/,
-        loader: 'esbuild-loader'
+        loader: 'esbuild-loader',
+        options: { target: 'es2022' }
       },
       {
         test: /\.node$/,
