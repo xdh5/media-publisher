@@ -1,0 +1,19 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "media-publisher-python"
+version = "0.1.0"
+description = "媒体发布的官方接口与批次执行适配"
+license = "GPL-2.0-only"
+requires-python = ">=3.10"
+dependencies = [
+    "requests>=2.31",
+    "python-dotenv>=1.0",
+    "google-api-python-client>=2.140",
+    "google-auth-oauthlib>=1.2.1",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["platform_api", "publishing"]

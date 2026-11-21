@@ -10,7 +10,7 @@ import re
 import requests
 
 _current = ContextVar("publishing_account_env", default=None)
-DATA_ROOT = Path(__file__).resolve().parents[2] / "data"
+DATA_ROOT = Path(os.getenv("MEDIA_PUBLISHER_DIR", Path.cwd())) / "data"
 
 
 def registry() -> dict:

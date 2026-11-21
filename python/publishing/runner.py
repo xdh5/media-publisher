@@ -15,7 +15,7 @@ TIMEOUT_SECONDS = 4 * 60 * 60 + 120
 
 
 def matrix_root() -> Path:
-    return Path(__file__).resolve().parents[2]
+    return Path(os.getenv("MEDIA_PUBLISHER_DIR", Path.cwd())).resolve()
 
 
 def electron_command() -> tuple[list[str], Path]:

@@ -9,7 +9,7 @@ from dotenv import load_dotenv
 
 
 def matrix_data_root() -> Path:
-    return Path(__file__).resolve().parents[2] / "data"
+    return Path(os.getenv("MEDIA_PUBLISHER_DIR", Path.cwd())) / "data"
 
 
 def load_matrix_group_envs() -> None:
