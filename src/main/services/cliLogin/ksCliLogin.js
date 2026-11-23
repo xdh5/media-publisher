@@ -16,26 +16,13 @@ import { verifyPublishLogin } from "./verifyPublishLogin.js";
 const puppeteer = addExtra(puppeteerCore);
 puppeteer.use(StealthPlugin());
 
-const QR_SELECTORS = [
-  "img[class*='qrcode']",
-  "img[class*='qr']",
-  "[class*='qrcode'] img",
-  "[class*='qr'] img",
-  "canvas[class*='qrcode']",
-  "canvas[class*='qr']",
-  "[class*='qrcode'] canvas",
-  "[class*='qr'] canvas",
-  "[class*='login'] img",
-  "[role='dialog'] img",
-  "canvas",
-  "img",
-];
+const QR_IMAGE_XPATH = '//*[@id="login-form"]//div[contains(concat(" ", normalize-space(@class), " "), " qrcode ")]/img';
 
 async function openKsQrPanel(page) {
   await page.waitForFunction(
     () => Array.from(document.querySelectorAll("button,a,div,span"))
       .some((element) => String(element.textContent || "").trim() === "立即登录"),
-    { timeout: 15000 }
+    { timeout: 15000, polling: 100 }
   );
   const clicked = await page.evaluate(() => {
     const candidates = Array.from(document.querySelectorAll("button,a,div,span,p"));
@@ -55,74 +42,24 @@ async function openKsQrPanel(page) {
 }
 
 async function captureKsQr(page, saveQrPngPath) {
-  let refreshed = false;
-  for (const frame of page.frames()) {
-    const refreshNode = await frame.$x("//*[normalize-space(text())='点击刷新']")
-      .then((nodes) => nodes.find(Boolean) || null)
-      .catch(() => null);
-    if (!refreshNode) continue;
-    refreshed = await refreshNode.click({ delay: 80 }).then(() => true).catch(() => false);
-    if (!refreshed) refreshed = await refreshNode.evaluate((element) => {
-      const rect = element.getBoundingClientRect();
-      if (rect.width <= 0 || rect.height <= 0) return false;
-      const clickable = element.closest("button,a,[role='button']") || element;
-      clickable.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true, view: window }));
-      clickable.dispatchEvent(new MouseEvent("mouseup", { bubbles: true, cancelable: true, view: window }));
-      clickable.click();
-      return true;
-    }).catch(() => false);
-    if (refreshed) break;
-  }
-  if (refreshed) {
-    await page.waitForFunction(() => {
-      const nodes = Array.from(document.querySelectorAll("button,a,div,span,p"));
-      return !nodes.some((element) => {
-        const rect = element.getBoundingClientRect();
-        return rect.width > 0 && rect.height > 0 &&
-          ["点击刷新", "二维码已失效"].includes(String(element.textContent || "").trim());
-      });
-    }, { timeout: 5000, polling: 200 }).catch(() => null);
-  }
-  const expired = await page.evaluate(() =>
-    Array.from(document.querySelectorAll("button,a,div,span,p")).some((element) => {
-      const rect = element.getBoundingClientRect();
-      return rect.width > 0 && rect.height > 0 &&
-        ["点击刷新", "二维码已失效"].includes(String(element.textContent || "").trim());
-    })
-  ).catch(() => false);
+  const expired = await page.evaluate(() => document.querySelector(".qr-login")?.innerText.includes("二维码已失效"));
   if (expired) {
-    await page.reload({ waitUntil: "domcontentloaded", timeout: 20000 });
-    await openKsQrPanel(page);
+    const previous = await page.$eval(".qrcode > img", image => image.src);
+    await page.evaluate(() => {
+      const refresh = [...document.querySelectorAll(".qr-login div, .qr-login span, .qr-login p")]
+        .find(element => element.childElementCount === 0 && element.textContent.trim() === "点击刷新");
+      refresh.click();
+    });
+    await page.waitForFunction(value => document.querySelector(".qrcode > img")?.src !== value &&
+      !document.querySelector(".qr-login")?.innerText.includes("二维码已失效"),
+    { timeout: 10000, polling: 100 }, previous);
   }
-  for (const frame of page.frames()) {
-    for (const selector of QR_SELECTORS) {
-      const nodes = await frame.$$(selector).catch(() => []);
-      for (const node of nodes) {
-        const size = await node.evaluate((element) => {
-          const rect = element.getBoundingClientRect();
-          const style = window.getComputedStyle(element);
-          const containerText = String(element.parentElement?.textContent || "");
-          return {
-            width: rect.width,
-            height: rect.height,
-            visible: rect.width >= 100 && rect.height >= 100 && style.visibility !== "hidden" &&
-              !containerText.includes("二维码已失效") && !containerText.includes("点击刷新"),
-          };
-        }).catch(() => null);
-        if (!size || !size.visible || Math.abs(size.width - size.height) > 80) continue;
-        const buffer = await node.screenshot({ type: "png" }).catch(() => null);
-        if (buffer && buffer.length > 80) {
-          fs.mkdirSync(path.dirname(saveQrPngPath), { recursive: true });
-          fs.writeFileSync(saveQrPngPath, buffer);
-          return true;
-        }
-      }
-    }
-  }
-  if (process.env.MATRIX_CLI_QR_DEBUG && saveQrPngPath) {
-    await page.screenshot({ type: "png", path: `${saveQrPngPath}.page.png`, fullPage: true }).catch(() => null);
-  }
-  return false;
+  await page.waitForXPath(QR_IMAGE_XPATH, { timeout: 10000 });
+  const [image] = await page.$x(QR_IMAGE_XPATH);
+  const source = await image.evaluate(element => element.src);
+  fs.mkdirSync(path.dirname(saveQrPngPath), { recursive: true });
+  fs.writeFileSync(saveQrPngPath, Buffer.from(source.split(",")[1], "base64"));
+  return true;
 }
 
 export async function runKsCliLogin({
