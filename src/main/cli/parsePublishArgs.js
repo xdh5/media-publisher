@@ -76,6 +76,12 @@ export function parsePublishArgs(subArgv) {
       out.config = args[++i];
     } else if (a === "--creative-statement" || a === "--cs") {
       out.creativeStatement = args[++i];
+    } else if (a === "--ai-chapters") {
+      out.publishOptions.dyAiChapters = true;
+    } else if (a === "--cover") {
+      out.publishOptions.dyCoverPath = args[++i];
+    } else if (a === "--portrait-cover") {
+      out.publishOptions.dyPortraitCoverPath = args[++i];
     } else if (a === "--draft") {
       out.draft = true;
     } else if (a === "--sph-link-type") {
@@ -268,6 +274,9 @@ export function publishHelpText() {
                             • 视频号/抖音/快手：整串拼进描述末尾；未写 # 的标签会自动补上。
                             • 哔哩哔哩/小红书：按空格切分为独立标签，前导 # 会被自动剥离，可省。
                             • 百家号/头条：当前代码不消费 bq，无需填。
+      --ai-chapters    抖音平台智能生成章节，等待生成结果并保存
+      --cover <path>   抖音自定义横封面，完整适配 4:3
+      --portrait-cover <path>  抖音自定义竖封面，完整适配 3:4
       --publish-at <t>  一次性定时发布，格式 "YYYY-MM-DD HH:mm:ss"。抖音、快手、视频号、
                             百家号、头条和小红书会立即上传并设置平台官方定时；其他平台直接报错。
                             应用内定时队列已移除。

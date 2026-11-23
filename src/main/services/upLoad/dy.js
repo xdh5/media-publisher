@@ -1,3 +1,4 @@
+import { configureDyPublication } from "./dyPublicationOptions.js";
 import path from "path";
 import maybeClosePublishWindow from "./closeWindow.js";
 import { resolveDyCreativeStatementLabel } from "../../../shared/creativeStatement.js";
@@ -422,6 +423,8 @@ export default async function (page, data, window, event) {
     // 自主声明入口在视频转码完成后才出现，必须在点击发布前完成
     await selectDyCreativeStatementWithRetry(page, data);
 
+    await configureDyPublication(page, data);
+
     const isOfficialSchedule = Boolean(data.officialScheduledPublish);
     if (isOfficialSchedule) {
       await setOfficialSchedule(page, "抖音", data.publishAt);
@@ -464,3 +467,5 @@ export default async function (page, data, window, event) {
     console.error("❌ 上传失败", e);
   }
 }
+
+export { fillDyTitle, selectDyCreativeStatementWithRetry, clickDyPublish, waitForDyImmediatePublish };

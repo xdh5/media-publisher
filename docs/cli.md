@@ -134,3 +134,10 @@ electron . cli publish -p sph --phone 13800138000 -f /path/to/video.mp4 \
 ## 编译
 
 - `yarn build:dir`：编译命令行主进程到 `dist/electron/main.js`
+
+
+## 抖音智能章节和自定义封面
+
+单文件发布支持 `--ai-chapters`、`--cover <横封面路径>`、`--portrait-cover <竖封面路径>`。智能章节等待平台 `/aweme/v1/chapter/recommend/get` 返回非空章节后点击保存；自定义封面按 4:3 和 3:4 完整适配后上传并保存。
+
+财经账号 `finance` 默认生成智能章节，并要求提供横竖封面。财经发布工作流自动传入本期 `cover.png` 与 `cover-portrait.png`，本地缺失时从 R2 恢复。
