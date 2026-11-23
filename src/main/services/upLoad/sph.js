@@ -1,3 +1,4 @@
+import { uploadSphCovers } from "./sphCover.js";
 import path from "path";
 import maybeClosePublishWindow from "./closeWindow.js";
 import { resolveVideoLinkOption } from "../../../shared/videoLink.js";
@@ -672,6 +673,12 @@ export default async function (page, data, window, event, onFinish) {
     }
     console.log(`[sph] 文案发布前校验成功：${JSON.stringify(textState)}`);
 
+    const { coverPath, portraitCoverPath } = data.publishOptions || {};
+    if (data.phone === "finance" && (!coverPath || !portraitCoverPath)) {
+      throw new Error("财经视频号发布必须提供3:4和4:3两张封面");
+    }
+    if (coverPath && portraitCoverPath) await uploadSphCovers(page, portraitCoverPath, coverPath);
+
     const isOfficialSchedule = Boolean(data.officialScheduledPublish);
     if (isOfficialSchedule) {
       await setOfficialSchedule(page, "视频号", data.publishAt);
@@ -712,3 +719,5 @@ export default async function (page, data, window, event, onFinish) {
     maybeClosePublishWindow(data, window);
   }
 }
+
+export { fillSphTextAsBefore, applySphCreativeStatement, waitSphUploadProcessing, clickSphPublishButton, waitSphPublishConfirmed };

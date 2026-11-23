@@ -149,6 +149,11 @@ def _publish_browser(target: dict, account: dict, spec: PlatformSpec, timing: di
             arguments.extend(["--cover", target["thumbnail_path"]])
         if target["portrait_thumbnail_path"]:
             arguments.extend(["--portrait-cover", target["portrait_thumbnail_path"]])
+    if spec.code == "wechat_channels":
+        if target["thumbnail_path"]:
+            arguments.extend(["--cover", target["thumbnail_path"]])
+        if target["portrait_thumbnail_path"]:
+            arguments.extend(["--portrait-cover", target["portrait_thumbnail_path"]])
     if spec.code == "kuaishou" and target["thumbnail_path"]:
         arguments.extend(["--cover", target["thumbnail_path"]])
     if target["tags"]:

@@ -146,7 +146,7 @@ export function parsePublishArgs(subArgv) {
       }
       const built = buildVideoLinkOption("视频号", linkType, out.sphLinkValue);
       if (!built.ok) return { ok: false, error: built.error };
-      out.publishOptions = { link: built.value };
+      out.publishOptions.link = built.value;
     }
   } else {
     out.sphLinkType = null;
