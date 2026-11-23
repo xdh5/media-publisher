@@ -1,5 +1,8 @@
 "use strict";
 
+import fs from "fs";
+import path from "path";
+
 import { BrowserWindow, app, session as electronSession } from "electron";
 import pie from "puppeteer-in-electron";
 import puppeteerCore from "puppeteer-core";
@@ -15,7 +18,6 @@ import { cliLoginQrTerminalBlockWidth } from "./cliLoginQrRefresh.js";
 import {
   tryDecodeQrPayloadFromNativeImage,
   renderQrPayloadWithQrcodeTerminal,
-  writeLoginQrPngFile,
 } from "./terminalQrQrcodeTerminal.js";
 import {
   hasSphSession,
@@ -49,184 +51,22 @@ function stripAnsi(s) {
   return String(s).replace(/\x1b\[[0-9;]*m/g, "");
 }
 
-/* ---- iframe 内二维码选择器（按优先级排列） ---- */
-const QR_SELECTORS_IN_IFRAME = [
-  "img.qrcode", // 视频号登录页二维码：<img class="qrcode" src="data:...">
-  ".qrcode-wrap img.qrcode",
-  ".qrcode-wrap img",
-  ".login-qrcode-wrap img",
-  ".qrcode-iframe-wrap img",
-  ".qrcode img",
-  "img[class*='qrcode']",
-  "img[class*='qr']",
-  "canvas",
-  "img",
-];
+const QR_IMAGE_XPATH = '//img[contains(concat(" ", normalize-space(@class), " "), " qrcode ")]';
 
-/** 视频号登录 iframe 的 URL 特征 */
-const LOGIN_IFRAME_URL_PATTERN = "login-for-iframe";
-
-/**
- * 在所有 frame（含主 frame）中查找二维码 img 截图。
- * 视频号登录页的 QR 可能在 login-for-iframe 子 frame 里，也可能直接在主 frame 的 #app 下。
- * @param {import("puppeteer").Page} page
- * @returns {Promise<{ buf: Buffer, fromDataUrl: boolean } | null>}
- */
 async function captureQrFromIframe(page) {
-  try {
-    if (typeof page.isClosed === "function" && page.isClosed()) return null;
-  } catch (_) {
-    return null;
-  }
-
-  const frames = page.frames();
-  cliQrDebugLog(
-    "当前 frame 数量:",
-    frames.length,
-    frames.map((f) => f.url())
-  );
-
-  // 优先检查子 frame（login-for-iframe），再检查主 frame
-  const sortedFrames = [
-    ...frames.filter((f) => f !== page.mainFrame()),
-    page.mainFrame(),
-  ];
-
-  for (const frame of sortedFrames) {
-    const isMain = frame === page.mainFrame();
-    const frameUrl = frame.url();
-    cliQrDebugLog("--- 检查", isMain ? "主 frame:" : "子 frame:", frameUrl);
-
-    // dump body 帮助调试（加深到 8 层）
-    try {
-      const bodySnippet = await frame.evaluate(() => {
-        if (!document.body) return "(no body)";
-        const imgs = Array.from(document.querySelectorAll("img")).map(
-          (el) =>
-            `<img class="${el.className}" src="${String(el.src).slice(
-              0,
-              80
-            )}" ${el.offsetWidth}x${el.offsetHeight}>`
-        );
-        const canvases = Array.from(document.querySelectorAll("canvas")).map(
-          (el) =>
-            `<canvas class="${el.className}" ${el.offsetWidth}x${el.offsetHeight}>`
-        );
-        const qrEls = Array.from(
-          document.querySelectorAll(
-            "[class*='qr'],[class*='QR'],[class*='Qr'],[id*='qr']," +
-              "[class*='qrcode'],[class*='login-qrcode'],[class*='qrcode-wrap']"
-          )
-        ).map(
-          (el) =>
-            `<${el.tagName.toLowerCase()} class="${el.className}" ${
-              el.offsetWidth
-            }x${el.offsetHeight}>`
-        );
-        const app = document.querySelector("#app");
-        let appTree = "(no #app)";
-        if (app) {
-          const walk = (node, depth) => {
-            if (depth > 8) return "";
-            const tag = node.tagName ? node.tagName.toLowerCase() : "";
-            const cls =
-              node.className && typeof node.className === "string"
-                ? "." + node.className.split(/\s+/).join(".")
-                : "";
-            const kids = Array.from(node.children || [])
-              .map((c) => walk(c, depth + 1))
-              .filter(Boolean)
-              .join(",");
-            return tag + cls + (kids ? "[" + kids + "]" : "");
-          };
-          appTree = walk(app, 0);
-        }
-        return JSON.stringify({
-          imgs,
-          canvases,
-          qrEls,
-          bodyLen: document.body.innerHTML.length,
-          appTree: appTree.slice(0, 3000),
-        });
-      });
-      cliQrDebugLog("frame 结构:", bodySnippet);
-    } catch (e) {
-      cliQrDebugLog("dump frame 失败:", e && e.message);
-      continue;
-    }
-
-    // 逐个尝试选择器
-    for (const sel of QR_SELECTORS_IN_IFRAME) {
-      try {
-        const handle = await frame.$(sel);
-        if (!handle) continue;
-
-        const info = await frame.evaluate((el) => {
-          return {
-            tag: el.tagName,
-            cls: el.className || "",
-            src: el.src ? String(el.src).slice(0, 120) : null,
-            w: el.offsetWidth,
-            h: el.offsetHeight,
-          };
-        }, handle);
-        cliQrDebugLog("选择器命中:", sel, "=>", JSON.stringify(info));
-
-        // 跳过 SVG sprite / logo 等无意义元素
-        if (info.tag === "IMG" && (!info.src || info.w < 10 || info.h < 10))
-          continue;
-        // 跳过明显不是 QR 的图片（logo 等非正方形大图）
-        if (
-          info.tag === "IMG" &&
-          sel === "img" &&
-          info.cls &&
-          !info.cls.match(/qr/i) &&
-          Math.abs(info.w - info.h) > 50
-        )
-          continue;
-
-        // data: URL 直接解码
-        if (info.src && info.src.startsWith("data:")) {
-          const fullSrc = await frame.evaluate((el) => el.src, handle);
-          const comma = fullSrc.indexOf(",");
-          if (comma > 0) {
-            const b64 = fullSrc.slice(comma + 1);
-            const buf = Buffer.from(b64, "base64");
-            if (buf.length > 32) {
-              cliQrDebugLog("从 data: URL 解码成功，字节:", buf.length);
-              return { buf, fromDataUrl: true };
-            }
-          }
-        }
-
-        // http(s) URL 的 img 且尺寸合理 —— 用 elementHandle.screenshot
-        if (info.w > 30 && info.h > 30) {
-          try {
-            const buf = await handle.screenshot({ type: "png" });
-            if (buf && buf.length > 32) {
-              cliQrDebugLog("elementHandle.screenshot 成功，字节:", buf.length);
-              return { buf, fromDataUrl: false };
-            }
-          } catch (e) {
-            cliQrDebugLog("elementHandle.screenshot 失败:", e && e.message);
-          }
-        }
-      } catch (e) {
-        cliQrDebugLog("选择器", sel, "在 frame 中失败:", e && e.message);
-      }
-    }
-  }
-
-  // 最终回退 —— 全页截图
-  try {
-    cliQrDebugLog("最终回退: 全页截图");
-    const buf = await page.screenshot({ type: "png" });
-    if (buf && buf.length > 32) return { buf, fromDataUrl: false };
-  } catch (e) {
-    cliQrDebugLog("全页截图失败:", e && e.message);
-  }
-
-  return null;
+  const frame = page.frames().find(item => item.url().startsWith("https://open.weixin.qq.com/connect/qrconnect")) ||
+    page.frames().find(item => item.url().includes("login-for-iframe")) || page.mainFrame();
+  const [image] = await frame.$x(QR_IMAGE_XPATH);
+  if (!image) return null;
+  const encoded = await image.evaluate(async element => {
+    if (element.src.startsWith("data:")) return element.src.split(",")[1];
+    const response = await fetch(element.src);
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    let value = "";
+    for (const byte of bytes) value += String.fromCharCode(byte);
+    return btoa(value);
+  });
+  return { buf: Buffer.from(encoded, "base64"), fromDataUrl: true };
 }
 
 /**
@@ -285,7 +125,7 @@ async function paintSphLoginQr(page, opts) {
   const captured = await captureQrFromIframe(page);
   if (!captured || !captured.buf || !captured.buf.length) return;
 
-  const { buf, fromDataUrl } = captured;
+  const { buf } = captured;
   const image = nativeImage.createFromBuffer(buf);
   if (!image || image.isEmpty()) return;
 
@@ -294,12 +134,8 @@ async function paintSphLoginQr(page, opts) {
 
   if (opts.saveQrPngPath) {
     try {
-      writeLoginQrPngFile({
-        image,
-        saveQrPngPath: opts.saveQrPngPath,
-        rawBuf: buf,
-        fromDataUrl,
-      });
+      fs.mkdirSync(path.dirname(opts.saveQrPngPath), { recursive: true });
+      fs.writeFileSync(opts.saveQrPngPath, buf);
     } catch (e) {
       console.error("写入 --save-qr-png 失败:", e.message);
     }
