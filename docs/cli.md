@@ -141,3 +141,8 @@ electron . cli publish -p sph --phone 13800138000 -f /path/to/video.mp4 \
 单文件发布支持 `--ai-chapters`、`--cover <横封面路径>`、`--portrait-cover <竖封面路径>`。智能章节等待平台 `/aweme/v1/chapter/recommend/get` 返回非空章节后点击保存；自定义封面按 4:3 和 3:4 完整适配后上传并保存。
 
 财经账号 `finance` 默认生成智能章节，并要求提供横竖封面。财经发布工作流自动传入本期 `cover.png` 与 `cover-portrait.png`，本地缺失时从 R2 恢复。
+
+
+## 快手自定义封面
+
+快手发布使用 `--cover <3:4封面路径>`。视频上传完成后，发布器进入封面设置的上传封面页，上传图片，选择3:4并确认。财经账号必须提供封面；财经工作流自动使用本期 `cover-portrait.png`。

@@ -92,8 +92,8 @@ export async function configureDyPublication(page, data) {
   const options = data.publishOptions || {};
   const finance = data.phone === "finance";
   if (options.dyAiChapters || finance) data.dyChapters = await generateDyChapters(page);
-  if (finance && (!options.dyCoverPath || !options.dyPortraitCoverPath)) {
+  if (finance && (!options.coverPath || !options.portraitCoverPath)) {
     throw new Error("财经抖音发布必须提供横竖自定义封面");
   }
-  if (options.dyCoverPath) await uploadDyCovers(page, options.dyCoverPath, options.dyPortraitCoverPath);
+  if (options.coverPath) await uploadDyCovers(page, options.coverPath, options.portraitCoverPath);
 }

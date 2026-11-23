@@ -1,3 +1,4 @@
+import { uploadKsCover } from "./ksCover.js";
 import path from "path";
 import maybeClosePublishWindow from "./closeWindow.js";
 import { KUAISHOU_VIDEO_UPLOAD_SELECTOR } from "../../../shared/platformPageState.js";
@@ -206,7 +207,7 @@ async function selectKsCreativeStatement(page, data) {
 
   // 用 puppeteer 真鼠标事件打开 dropdown（ant-design 走 mousedown）
   try {
-    await page.click(`#${triggerInfo.id}`, { delay: 80 });
+    await page.evaluate(id => document.getElementById(id).dispatchEvent(new MouseEvent("mousedown", { bubbles: true })), triggerInfo.id);
     console.log("[ks] 已 page.click 打开下拉");
   } catch (e) {
     console.warn("[ks] page.click 失败，尝试 DOM 派发事件:", e?.message || e);
@@ -424,6 +425,10 @@ export default async function (page, data, window,event) {
       submitText
     );
 
+    const coverPath = data.publishOptions?.coverPath;
+    if (data.phone === "finance" && !coverPath) throw new Error("财经快手发布必须提供3:4封面");
+    if (coverPath) await uploadKsCover(page, coverPath);
+
     const isOfficialSchedule = Boolean(data.officialScheduledPublish);
     if (isOfficialSchedule) {
       await setOfficialSchedule(page, "快手", data.publishAt);
@@ -490,3 +495,5 @@ export default async function (page, data, window,event) {
     console.error("❌ 发布失败", e);
   }
 }
+
+export { fillKsCopy, selectKsCreativeStatement, waitForKsImmediatePublish };
