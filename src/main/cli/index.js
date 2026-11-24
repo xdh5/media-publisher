@@ -102,6 +102,10 @@ export async function runCliMain(argv = process.argv) {
         const { runXiaohongshuCliLogin } = await import("../services/cliLogin/xiaohongshuCliLogin.js");
         return await runXiaohongshuCliLogin(loginOpts);
       }
+      if (v.platform === "哔哩哔哩") {
+        const { runBilibiliCliLogin } = await import('../services/cliLogin/bilibiliCliLogin.js');
+        return await runBilibiliCliLogin(loginOpts);
+      }
       if (v.platform === "头条") {
         const { runTtCliLogin } = await import("../services/cliLogin/ttCliLogin.js");
         return await runTtCliLogin(loginOpts);
@@ -155,6 +159,7 @@ export async function runCliMain(argv = process.argv) {
           id: result.id,
           publishAt: result.publishAt,
           message: result.message,
+          ...result.outcome,
         })
       );
     } else if (result.exitCode === 0) {
@@ -165,6 +170,7 @@ export async function runCliMain(argv = process.argv) {
           resultStatus: result.status,
           publishMode: result.publishMode,
           message: result.message,
+          ...result.outcome,
         })
       );
     } else if (result.exitCode === 4) {
@@ -177,6 +183,7 @@ export async function runCliMain(argv = process.argv) {
           outcome: result.outcome,
           needsAttention: true,
           message: result.message,
+          ...result.outcome,
         })
       );
     } else if (result.exitCode === 3) {

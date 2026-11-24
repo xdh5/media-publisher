@@ -26,7 +26,9 @@ def _target_from_item(item: dict, platform: str) -> dict:
         "file": _text(item.get("file")),
         "thumbnail_path": _text(item.get("thumbnail_path")),
         "portrait_thumbnail_path": _text(item.get("portrait_thumbnail_path")),
+        "widescreen_thumbnail_path": _text(item.get("widescreen_thumbnail_path")),
         "ai_chapters": item.get("ai_chapters") is True,
+        "category": _text(item.get("category")),
         "video_url": _text(item.get("video_url")),
         "tags": _text(item.get("tags")),
         "bt2": _text(item.get("bt2") or item.get("short_title")),
@@ -142,6 +144,15 @@ def _publish_browser(target: dict, account: dict, spec: PlatformSpec, timing: di
         "--phone", account["account_group"],
         "--creative-statement", target["creative_statement"] or "ai_generated",
     ]
+    if spec.code == 'bilibili':
+        if target['widescreen_thumbnail_path']:
+            arguments.extend(['--widescreen-cover', target['widescreen_thumbnail_path']])
+        if target['category']:
+            arguments.extend(['--category', target['category']])
+        if target['thumbnail_path']:
+            arguments.extend(['--cover', target['thumbnail_path']])
+        if target['ai_chapters']:
+            arguments.append('--ai-chapters')
     if spec.code == "douyin":
         if target["ai_chapters"]:
             arguments.append("--ai-chapters")

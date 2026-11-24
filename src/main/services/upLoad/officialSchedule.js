@@ -1,3 +1,4 @@
+import { setBilibiliSchedule } from './bilibiliPublishing.js';
 import { setDouyinSchedule } from "./officialSchedule/douyin.js";
 import { setKuaishouSchedule } from "./officialSchedule/kuaishou.js";
 import { setShipinhaoSchedule } from "./officialSchedule/shipinhao.js";
@@ -7,6 +8,7 @@ export { waitForOfficialScheduleAccepted } from "./officialSchedule/acceptance.j
 export { clickKuaishouScheduleConfirmation } from "./officialSchedule/kuaishou.js";
 
 const OFFICIAL_SCHEDULE_PLATFORMS = new Set([
+  "哔哩哔哩",
   "抖音",
   "快手",
   "视频号",
@@ -73,6 +75,7 @@ export async function setOfficialSchedule(page, platform, publishAtText) {
     throw new Error(`${platform}不支持矩媒官方定时发布自动化`);
   }
   const publishAt = normalizePublishAt(publishAtText);
+  if (platform === "哔哩哔哩") { await setBilibiliSchedule(page, publishAt.full); return; }
   if (platform === "抖音") {
     await setDouyinSchedule(page, publishAt);
     return;

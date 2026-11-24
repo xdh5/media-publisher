@@ -77,7 +77,7 @@ async function doUpload(data, transport, queueDone) {
   data = applyXhsConservativePublishOptions(data);
   data.partition = data.partition.split("-")[0];
   const isXhsTask = isXhsPlatform(data.pt);
-  const maxRetries = data.show ? 1 : getPublishAttemptLimit(data, 5);
+  const maxRetries = data.show || data.pt === "哔哩哔哩" ? 1 : getPublishAttemptLimit(data, 5);
   let currentAttempt = 0;
   let finished = false;
   let activeBrowser = null;
@@ -429,7 +429,7 @@ async function doUpload(data, transport, queueDone) {
               );
               if (!sessionProbe.ok) {
                 const supportsQrLogin =
-                  ["抖音", "快手", "头条", "视频号"].includes(data.pt);
+                  ["抖音", "快手", "头条", "视频号", "哔哩哔哩"].includes(data.pt);
                 const message = sessionProbe.loginRequired
                   ? `${sessionProbe.reason}，请重新登录后再试`
                   : sessionProbe.reason;

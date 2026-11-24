@@ -90,3 +90,14 @@ electron . cli publish-toutiao-micro --phone finance --file manifest.json
 ```
 
 视频使用16:9封面并关闭生成图文；文章使用完整正文及三张插图、4:3封面，开启头条首发并关闭同时发布微头条；微头条使用定稿摘要和一张4:3封面。正文、图片与摘要均从清单读取，不在发布时生成内容。每个命令等待平台提交成功后保存独立回执；`--help` 查看参数。当前三条专用命令立即发布，预约视频使用原有 `cli publish`。
+
+## B站发布参数
+
+B站扫码登录使用publisher独立的账号分区，二维码从固定XPath `//img[@alt='Scan me!']` 读取；登录完成后必须重新打开真实投稿页验证，Cookie存在不能代替预检。
+
+```bash
+electron . cli login -p blbl --phone finance --save-qr-png bilibili-login.png
+electron . cli publish -p blbl --phone finance --file video.mp4 --title "视频标题" --category "知识" --cover cover.png --widescreen-cover cover-widescreen.png --ai-chapters --creative-statement ai_generated
+```
+
+`--category` 可选，不传则保留平台默认分区。财经业务明确传知识。`--cover` 上传4:3首页推荐封面，`--widescreen-cover` 上传16:9个人空间封面，`--ai-chapters` 使用平台智能章节；`--publish-at "YYYY-MM-DD HH:mm:ss"` 使用平台真实定时发布。投稿成功须同时取得平台成功响应、稿件ID并在稿件管理页定位本次标题；预约还核对提交的发布时间。失败返回具体错误并保存发布页诊断信息。

@@ -44,7 +44,9 @@ export async function probeAccountSessions(accounts) {
           screenshotPath = path.join(os.tmpdir(), `media-publisher-probe-${randomUUID()}.png`);
           await page.screenshot({ path: screenshotPath });
         }
-        return { loggedIn: result.ok ? true : result.loginRequired ? false : null,
+        const platformAccountId = result.ok && account.pt === '哔哩哔哩'
+          ? (await page.cookies('https://www.bilibili.com')).find(row => row.name === 'DedeUserID')?.value : undefined;
+        return { platformAccountId, loggedIn: result.ok ? true : result.loginRequired ? false : null,
           status: result.ok ? "connected" : result.loginRequired ? "login_required" : "error",
           loginRequired: result.loginRequired === true, realSessionProbe: true,
           checkedAt: new Date().toISOString(), reason: result.reason, currentUrl: result.currentUrl, screenshotPath,

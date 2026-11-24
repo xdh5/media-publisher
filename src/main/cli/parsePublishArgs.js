@@ -78,6 +78,11 @@ export function parsePublishArgs(subArgv) {
       out.creativeStatement = args[++i];
     } else if (a === "--ai-chapters") {
       out.publishOptions.dyAiChapters = true;
+      out.publishOptions.blblAiChapters = true;
+    } else if (a === "--category") {
+      out.publishOptions.category = args[++i];
+    } else if (a === "--widescreen-cover") {
+      out.publishOptions.widescreenCoverPath = args[++i];
     } else if (a === "--cover") {
       out.publishOptions.coverPath = args[++i];
     } else if (a === "--portrait-cover") {
@@ -191,10 +196,10 @@ export function parsePublishArgs(subArgv) {
   }
   // in dir mode title comes from xlsx per row, no global --title needed
 
-  const visibleDebugPlatforms = new Set(["视频号", "抖音"]);
+  const visibleDebugPlatforms = new Set(["视频号", "抖音", "哔哩哔哩"]);
   if (out.show && !visibleDebugPlatforms.has(out.platform)) {
     console.warn(
-      "media-publisher: 当前仅视频号和抖音 CLI publish 支持显示浏览器窗口，已忽略 --show。"
+      "media-publisher: 当前仅视频号、抖音和B站 CLI publish 支持显示浏览器窗口，已忽略 --show。"
     );
     out.show = false;
   }
@@ -274,7 +279,9 @@ export function publishHelpText() {
                             • 视频号/抖音/快手：整串拼进描述末尾；未写 # 的标签会自动补上。
                             • 哔哩哔哩/小红书：按空格切分为独立标签，前导 # 会被自动剥离，可省。
                             • 百家号/头条：当前代码不消费 bq，无需填。
-      --ai-chapters    抖音平台智能生成章节，等待生成结果并保存
+      --widescreen-cover <path>  B站16:9个人空间封面，--cover为4:3首页封面
+      --category <分区>  B站分区；不传则保留页面默认分区
+      --ai-chapters    抖音或B站智能生成章节，等待生成结果并保存
       --cover <path>   自定义封面：抖音使用4:3，快手使用3:4，头条视频使用16:9
       --portrait-cover <path>  抖音自定义竖封面，完整适配 3:4
       --publish-at <t>  一次性定时发布，格式 "YYYY-MM-DD HH:mm:ss"。抖音、快手、视频号、

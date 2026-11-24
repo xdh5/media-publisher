@@ -16,6 +16,9 @@ const OFFICIAL_ALIASES = {
 }
 
 const PLATFORM_ALIASES = {
+  blbl: '哔哩哔哩',
+  bilibili: '哔哩哔哩',
+  哔哩哔哩: '哔哩哔哩',
   dy: '抖音',
   douyin: '抖音',
   抖音: '抖音',
@@ -35,8 +38,8 @@ const PLATFORM_ALIASES = {
   小红书: '小红书'
 }
 
-/** 当前支持抖音、视频号、快手、头条和小红书扫码登录 */
-const SUPPORTED_LOGIN = ['抖音', '视频号', '快手', '头条', '小红书']
+/** 当前支持抖音、视频号、快手、头条、小红书和B站扫码登录 */
+const SUPPORTED_LOGIN = ['抖音', '视频号', '快手', '头条', '小红书', '哔哩哔哩']
 
 /**
  * 解析 `cli login` 后的 argv（不含子命令名 login）
@@ -101,7 +104,7 @@ export function parseLoginArgs(subArgv) {
   if (!out.platform) {
     return {
       ok: false,
-      error: '缺少 --platform（或 -p）。扫码支持 dy / sph / ks / tt / xhs；官方登录支持 youtube / tiktok / instagram / facebook'
+      error: '缺少 --platform（或 -p）。扫码支持 dy / sph / ks / tt / xhs / blbl；官方登录支持 youtube / tiktok / instagram / facebook'
     }
   }
   const raw = String(out.platform).trim()
@@ -196,7 +199,7 @@ YouTube 走 Google 官方授权，TikTok、Instagram、Facebook 走 Zernio。凭
 视频号登录支持 --show 弹出登录窗口，扫码后窗口自动关闭。
 
 选项:
-  -p, --platform <id>   扫码：dy / sph / ks / tt / xhs；官方：youtube / tiktok / instagram / facebook
+  -p, --platform <id>   扫码：dy / sph / ks / tt / xhs / blbl；官方：youtube / tiktok / instagram / facebook
       --phone <id>      扫码为手机号或账号组；官方登录必须是 finance、korean 或 chinese
       --client-secret <文件>  YouTube 的 Google 客户端 JSON
       --api-key <key>   Zernio API key，TikTok 与 Instagram/Facebook 使用各自的 key

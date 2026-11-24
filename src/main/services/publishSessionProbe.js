@@ -5,6 +5,7 @@ import { isPlatformLoginUrl, KUAISHOU_VIDEO_UPLOAD_SELECTOR } from "../../shared
 import { XIAOHONGSHU_VIDEO_INPUT } from "./upLoad/xiaohongshuVideo.js";
 
 const READY_SELECTORS = {
+  哔哩哔哩: ['.bcc-upload-wrapper input[type="file"], .bcc-upload input[type="file"]'],
   小红书: [XIAOHONGSHU_VIDEO_INPUT],
   抖音: ['input[name="upload-btn"]'],
   快手: [KUAISHOU_VIDEO_UPLOAD_SELECTOR],
@@ -21,6 +22,7 @@ const READY_SELECTORS = {
 };
 
 const LOGIN_SELECTORS = {
+  哔哩哔哩: ['img[alt="Scan me!"]'],
   小红书: ["div[class*='login-box']"],
   抖音: [
     "#animate_qrcode_container",

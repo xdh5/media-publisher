@@ -9,6 +9,7 @@ export function isPlatformLoginUrl(platform, currentUrl) {
     const url = new URL(rawUrl);
     const host = url.hostname.toLowerCase();
     const pathname = url.pathname.toLowerCase();
+    if (pt === "哔哩哔哩") return host === "passport.bilibili.com";
     if (pt === "抖音") {
       return (
         host === "sso.douyin.com" ||
