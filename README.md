@@ -78,3 +78,15 @@ yarn build:dir
 ## 许可
 
 [GPL-2.0-only](./LICENSE)
+
+## 头条三种独立发布
+
+财经生产清单包含完整正文、约150字的 `micro_summary`、三张插图计划和封面路径。三个命令互不触发，可分别运行：
+
+```bash
+electron . cli publish-toutiao-video --phone finance --file manifest.json
+electron . cli publish-toutiao-article --phone finance --file manifest.json
+electron . cli publish-toutiao-micro --phone finance --file manifest.json
+```
+
+视频使用16:9封面并关闭生成图文；文章使用完整正文及三张插图、4:3封面，开启头条首发并关闭同时发布微头条；微头条使用定稿摘要和一张4:3封面。正文、图片与摘要均从清单读取，不在发布时生成内容。每个命令等待平台提交成功后保存独立回执；`--help` 查看参数。当前三条专用命令立即发布，预约视频使用原有 `cli publish`。

@@ -33,6 +33,20 @@ export async function runCliMain(argv = process.argv) {
   }
 
   const cmd = sub[0];
+  const toutiaoCommands = { "publish-toutiao-video": "video", "publish-toutiao-article": "article", "publish-toutiao-micro": "micro" };
+  if (toutiaoCommands[cmd]) {
+    const { parseToutiaoPublishArgs } = await import("./parseToutiaoPublishArgs.js");
+    const parsed = parseToutiaoPublishArgs(sub.slice(1), toutiaoCommands[cmd]);
+    if (!parsed.ok) { console.error(parsed.error); return 2; }
+    if (parsed.value.help) {
+      console.log(`用法：cli ${cmd} --phone <账号组> --file <财经生产清单.json>`);
+      return 0;
+    }
+    const result = await runSingleFilePublish(parsed.value);
+    writeCliJson(result);
+    return result.exitCode;
+  }
+
   if (cmd === "douyin-creator-works") {
     const [, flag, phone, endpoints] = sub;
     if (flag !== "--phone" || !phone || !endpoints) {

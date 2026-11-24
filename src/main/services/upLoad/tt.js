@@ -1,3 +1,9 @@
+import fs from 'fs'
+import { uploadToutiaoVideoCover } from './ttVideoCover.js'
+import { saveToutiaoPublicationResult } from './ttPublishResult.js'
+import { publishToutiaoArticle } from "./ttArticle.js";
+import { publishToutiaoMicro } from "./ttMicro.js";
+import { setToutiaoCheckbox } from "./ttText.js";
 import path from 'path'
 import maybeClosePublishWindow from './closeWindow.js'
 import { setOfficialSchedule } from './officialSchedule.js'
@@ -34,55 +40,7 @@ async function selectTtCreativeStatement(page, data) {
   }
   console.log('[tt] 准备勾选视频来源:', label)
 
-  const pickResult = await page.evaluate(text => {
-    const norm = t =>
-      String(t || '')
-        .replace(/\s+/g, '')
-        .trim()
-    const target = norm(text)
-    var wraps = document.querySelectorAll('.byte-checkbox.checkbot-item')
-    var debug = []
-    for (var i = 0; i < wraps.length; i++) {
-      var wrap = wraps[i]
-      var span = wrap.querySelector('.byte-checkbox-inner-text')
-      var t = span ? norm(span.textContent) : ''
-      debug.push(t)
-      if (t === target || t.indexOf(target) === 0) {
-        var input = wrap.querySelector('input[type="checkbox"]')
-        if (input && input.checked) return { ok: 'already', debug: debug }
-        if (input) {
-          try { input.click() } catch (_) {}
-        }
-        try { wrap.click() } catch (_) {}
-        var inner = wrap.querySelector('.byte-checkbox-wrapper')
-        if (inner) {
-          try { inner.click() } catch (_) {}
-        }
-        return {
-          ok: true,
-          debug: debug,
-          checkedAfter: input ? input.checked : null
-        }
-      }
-    }
-    return { ok: false, debug: debug }
-  }, label)
-
-  console.log(
-    `[tt] 视频来源所有勾选项文案: ${JSON.stringify(pickResult.debug || [])}`
-  )
-  if (!pickResult || !pickResult.ok) {
-    console.warn(`未找到头条视频来源勾选项: ${label}`)
-    return
-  }
-  if (pickResult.ok === 'already') {
-    console.log('[tt] 视频来源已是勾选状态，跳过')
-    return
-  }
-  await page.waitForTimeout(300)
-  console.log(
-    `[tt] 已勾选视频来源: ${label}（checkedAfter=${pickResult.checkedAfter}）`
-  )
+  await setToutiaoCheckbox(page, label, true)
 }
 
 const {
@@ -618,6 +576,16 @@ async function openToutiaoCoverDialog(page) {
 }
 
 export default async function (page, data, window, event) {
+  const kind = data.publishOptions?.toutiaoContentType;
+  if (kind === "article" || kind === "micro") {
+    try {
+      return await (kind === "article" ? publishToutiaoArticle : publishToutiaoMicro)(page, data, window, event);
+    } catch (error) {
+      event.reply("puppeteerFile-done", { ...data, status: false, message: error.message });
+      return;
+    }
+  }
+
   const isDraftMode =
     data.publishMode === 'draft' || data.publishToDraft === true
   let hasTagSelector = false
@@ -658,9 +626,10 @@ export default async function (page, data, window, event) {
     await page.waitForSelector(titleSelector, { timeout: 60 * 1000 })
     const input = await page.$(titleSelector)
     if (!input) throw new Error('未找到头条标题输入框')
-    await input.click({ clickCount: 3 })
-    await page.keyboard.press('Backspace')
-    await page.keyboard.type(data.data.bt1 || '', { delay: 50 })
+    await input.evaluate((element, value) => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(element, value)
+      element.dispatchEvent(new Event('input', { bubbles: true }))
+    }, data.data.bt1 || '')
     console.log('[tt] 标题已输入')
   } catch (e) {
     console.error('[tt] ❌ 输入标题失败:', e?.message || e)
@@ -699,9 +668,17 @@ export default async function (page, data, window, event) {
     await openToutiaoCoverDialog(page)
     console.log('封面弹窗已打开')
     publishStage = '调整封面'
-    await setToutiaoCover(page, hasTagSelector, stage => {
-      publishStage = stage
-    })
+    if (data.publishOptions?.coverPath) {
+      await uploadToutiaoVideoCover(page, data.publishOptions.coverPath)
+    } else {
+      await setToutiaoCover(page, hasTagSelector, stage => { publishStage = stage })
+    }
+    await setToutiaoCheckbox(page, '生成图文', false)
+    const description = await page.$('textarea[placeholder="请输入视频简介"]')
+    await description.evaluate((element, value) => {
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(element, value)
+      element.dispatchEvent(new Event('input', { bubbles: true }))
+    }, data.data.bdText || '')
     await page.waitForTimeout(1000)
 
     publishStage = '等待发布按钮'
@@ -733,6 +710,13 @@ export default async function (page, data, window, event) {
       publishStage = '点击发布'
       await clickToutiaoFooterAction(page, { draft: false })
     }
+    if (!shouldSaveDraft && !isOfficialSchedule && data.publishOptions?.toutiaoManifestPath) {
+      const manifest = JSON.parse(fs.readFileSync(data.publishOptions.toutiaoManifestPath, 'utf8'))
+      return await saveToutiaoPublicationResult(page, data, manifest, 'video', event, window)
+    }
+    if (!shouldSaveDraft && !isOfficialSchedule) {
+      await page.waitForFunction(() => location.pathname === '/profile_v4/xigua/content-manage-v2', { timeout: 60000 })
+    }
     console.log(
       shouldSaveDraft ? '✅ 头条号视频已保存草稿' : '✅ 头条号视频上传成功'
     )
@@ -762,3 +746,4 @@ export default async function (page, data, window, event) {
     })
   }
 }
+
