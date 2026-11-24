@@ -1,3 +1,4 @@
+import { resolveSphSurface } from "./sphSurface.js";
 import { uploadSphCovers } from "./sphCover.js";
 import path from "path";
 import maybeClosePublishWindow from "./closeWindow.js";
@@ -56,8 +57,8 @@ async function tryDeclareOriginal(page) {
     await page.waitForTimeout(300);
     const clicked = await page.evaluate(() => {
       const app = document.querySelector("wujie-app.wujie_iframe");
-      if (!app || !app.shadowRoot) return false;
-      const bodies = app.shadowRoot.querySelectorAll(
+      const root = app?.shadowRoot || document;
+      const bodies = root.querySelectorAll(
         ".weui-desktop-dialog__bd"
       );
       for (const body of bodies) {
@@ -108,7 +109,7 @@ async function applySphCreativeStatement(page, value) {
 
   const opened = await page.evaluate(() => {
     const app = document.querySelector("wujie-app.wujie_iframe");
-    const root = app && app.shadowRoot;
+    const root = app?.shadowRoot || document;
     if (!root) return false;
     const trigger = root.querySelector(".post-with-mark-tag .select-display");
     if (!trigger) return false;
@@ -123,7 +124,7 @@ async function applySphCreativeStatement(page, value) {
   await page.waitForTimeout(300);
   const clicked = await page.evaluate((expected) => {
     const app = document.querySelector("wujie-app.wujie_iframe");
-    const root = app && app.shadowRoot;
+    const root = app?.shadowRoot || document;
     if (!root) return false;
     const options = Array.from(root.querySelectorAll(".mark-tag-option"));
     const target = options.find((item) => {
@@ -160,10 +161,16 @@ async function waitSphPublishConfirmed(page) {
   const deadline = Date.now() + 60 * 1000;
   let lastSnapshot = null;
   while (Date.now() < deadline) {
+    await page.evaluate(() => {
+      const root = document.querySelector("wujie-app.wujie_iframe")?.shadowRoot || document;
+      const direct = [...root.querySelectorAll("button")].find(button =>
+        button.textContent.trim() === "直接发表" && button.getBoundingClientRect().width > 0 && !button.disabled);
+      if (direct) direct.click();
+    });
     const snapshot = await page
       .evaluate(() => {
         const app = document.querySelector("wujie-app.wujie_iframe");
-        const root = app && app.shadowRoot;
+        const root = app?.shadowRoot || document;
         const isVisible = (node) => {
           const style = window.getComputedStyle(node);
           const rect = node.getBoundingClientRect();
@@ -243,7 +250,7 @@ async function clickSphFormButton(page, label, action) {
     const result = await page
       .evaluate((expectedAction) => {
         const app = document.querySelector("wujie-app.wujie_iframe");
-        const root = app && app.shadowRoot;
+        const root = app?.shadowRoot || document;
         if (!root) return { ok: false, reason: "shadow-root-missing" };
 
         const form = root.querySelector(".form-btns");
@@ -325,7 +332,7 @@ async function ensureSphFileSelected(page, filePath, attempts = 3) {
     page
       .evaluate((expectedFileName) => {
         const app = document.querySelector("wujie-app.wujie_iframe");
-        const root = app && app.shadowRoot;
+        const root = app?.shadowRoot || document;
         if (!root) return false;
         // input.files 只能证明文件已写入 input，不能证明页面真正接收并开始上传。
         if (root.querySelector("video")) return true;
@@ -362,9 +369,6 @@ async function ensureSphFileSelected(page, filePath, attempts = 3) {
       });
       if (!input) throw new Error("上传 input 不存在");
       await input.uploadFile(filePath);
-      await input.evaluate((el) => {
-        el.dispatchEvent(new Event("change", { bubbles: true }));
-      });
     } catch (err) {
       lastError = err;
     }
@@ -391,8 +395,7 @@ async function waitSphUploadProcessing(page) {
     if (page.isClosed()) throw new Error("视频号发布页面已关闭，停止等待");
     const state = await page.evaluate(() => {
       const app = document.querySelector("wujie-app.wujie_iframe");
-      if (!app || !app.shadowRoot) return { done: false, progress: "页面加载中", stallMs: 90000 };
-      const root = app.shadowRoot;
+      const root = app?.shadowRoot || document;
       const pageText = String(root.textContent || "").replace(/\s+/g, " ");
       // 「删除」标签从上传开始就会出现，不能作为完成标志。平台在未完成时会明确
       // 显示“文件上传中，请等待完成后再编辑”，此时发表按钮虽无 disabled 属性，
@@ -448,12 +451,9 @@ async function fillSphTextAsBefore(page, description, shortTitle, fields = {}) {
       { timeout: WAIT_SELECTOR_APPEAR_MS }
     );
     if (!titleInput) throw new Error("未找到视频号描述输入框");
-    await titleInput.click();
     await page.evaluate(() => {
       const app = document.querySelector("wujie-app.wujie_iframe");
-      const target = app && app.shadowRoot
-        ? app.shadowRoot.querySelector(".post-desc-box .input-editor")
-        : null;
+      const target = (app?.shadowRoot || document).querySelector(".post-desc-box .input-editor");
       if (!target) throw new Error("未找到视频号描述输入框真实节点");
       target.focus();
     });
@@ -470,14 +470,9 @@ async function fillSphTextAsBefore(page, description, shortTitle, fields = {}) {
       { timeout: WAIT_SELECTOR_APPEAR_MS }
     );
     if (!shortTitleInput) throw new Error("未找到视频号短标题输入框");
-    await shortTitleInput.click();
     await page.evaluate(() => {
       const app = document.querySelector("wujie-app.wujie_iframe");
-      const target = app && app.shadowRoot
-        ? app.shadowRoot.querySelector(
-            'input[placeholder="填写短标题有机会获得更多流量"]'
-          )
-        : null;
+      const target = (app?.shadowRoot || document).querySelector('input[placeholder="填写短标题有机会获得更多流量"]');
       if (!target) throw new Error("未找到视频号短标题输入框真实节点");
       target.focus();
     });
@@ -493,7 +488,7 @@ async function fillSphTextAsBefore(page, description, shortTitle, fields = {}) {
 async function readSphTextState(page, title, tags, shortTitle) {
   return page.evaluate((expectedTitle, expectedTags, expectedShortTitle) => {
     const app = document.querySelector("wujie-app.wujie_iframe");
-    const root = app && app.shadowRoot;
+    const root = app?.shadowRoot || document;
     if (!root) return { descriptionOk: false, shortTitleOk: false };
     const descriptionBox = root.querySelector(".post-desc-box");
     const descriptionText = String(
@@ -574,6 +569,7 @@ export default async function (page, data, window, event, onFinish) {
 
   console.log(data);
   await page.waitForTimeout(1000 * 5);
+  page = resolveSphSurface(page);
   try {
     await ensureSphFileSelected(page, path.resolve(data.filePath));
   } catch (err) {
