@@ -6,6 +6,7 @@ import { addExtra } from "puppeteer-extra";
 import pie from "puppeteer-in-electron";
 import Type from "./Type";
 import { prepareElectronPublishPage } from "./electronPublishPage.js";
+import { initializePublishProgress, setPublishStage, getPublishProgress } from "./publishStage.js";
 import { createPublishTaskQueue } from "./publishTaskQueue.js";
 import { UPLOAD_WINDOW_AUTO_CLOSE_MS } from "./upLoad/uploadTimeouts.js";
 import { skipCloseConfirmation } from "./upLoad/closeWindow.js";
@@ -145,7 +146,7 @@ async function doUpload(data, transport, queueDone) {
     if (win && !win.isDestroyed()) win.close();
   };
 
-  const createAttemptTransport = () => ({
+  const createAttemptTransport = (page) => ({
     reply(channel, ...args) {
       if (finished) return false;
       const payload = args[0];
@@ -154,9 +155,10 @@ async function doUpload(data, transport, queueDone) {
         payload &&
         payload.status === false
       ) {
+        console.error("[发布失败阶段]", JSON.stringify({ ...getPublishProgress(page), message: payload.message }));
         // 官方定时发布已经完成上传并操作平台页面，失败后自动重试可能重复提交。
         // 直接返回真实失败结果，让调用方决定是否按新时间重新发起。
-        if (isXhsTask || data.officialScheduledPublish) {
+        if (isXhsTask || data.officialScheduledPublish || payload.needsAttention) {
           const replied = transport.reply(channel, ...args);
           finishOnce();
           return replied;
@@ -170,6 +172,7 @@ async function doUpload(data, transport, queueDone) {
         payload &&
         payload.status === true &&
         !payload.skipped;
+      if (ok) setPublishStage(page, "平台确认发布流程完成");
       const replied = transport.reply(channel, ...args);
       if (ok) finishOnce();
       return replied;
@@ -233,7 +236,7 @@ async function doUpload(data, transport, queueDone) {
         });
         page = await pie.getPage(browser, win);
       }
-      if (["抖音", "视频号"].includes(data.pt)) {
+      if (["抖音", "视频号", "哔哩哔哩"].includes(data.pt)) {
         if (data.show && !data.mmCliSuppressWindow) {
           win.show();
         } else {
@@ -246,11 +249,19 @@ async function doUpload(data, transport, queueDone) {
       }
       activeWin = win;
       activeBrowser = browser;
+      initializePublishProgress(page, { platform: data.pt, account: data.phone, taskId: data.taskId, attempt: currentAttempt });
       let lastProgressAt = Date.now();
       let lastPageState = "";
+      let lastProgressLogAt = 0;
+      let lastSamplingError = "";
       let samplingProgress = false;
       const failStalledTask = (message) => {
         if (finished || activeWin !== win) return;
+        const progress = getPublishProgress(page);
+        console.error("[发布卡点]", JSON.stringify({ ...progress, message,
+          stageSeconds: Math.round((Date.now() - progress.stageStartedAt) / 1000),
+          idleSeconds: Math.round((Date.now() - Math.max(lastProgressAt, progress.stageStartedAt)) / 1000),
+          lastPageState: lastPageState ? JSON.parse(lastPageState) : null, lastSamplingError }));
         safeReply("puppeteerFile-done", {
           ...data, status: false, message, outcome: "unknown", needsAttention: true,
         });
@@ -264,25 +275,43 @@ async function doUpload(data, transport, queueDone) {
       if (progressTimer) clearInterval(progressTimer);
       progressTimer = setInterval(() => {
         if (finished || activeWin !== win) return;
-        if (Date.now() - lastProgressAt >= 5 * 60 * 1000) {
-          failStalledTask(`${data.pt}页面连续5分钟无进展，已释放浏览器；发布结果待核对，请先检查作品管理`);
+        const progress = getPublishProgress(page);
+        const idleSeconds = Math.floor((Date.now() - Math.max(lastProgressAt, progress.stageStartedAt)) / 1000);
+        if (idleSeconds >= 10 * 60) {
+          failStalledTask(`${data.pt}页面连续10分钟无进展，卡在「${progress.stage}」，已释放浏览器；发布结果待核对，请先检查作品管理`);
           return;
+        }
+        if (Date.now() - lastProgressLogAt >= 60000) {
+          console.log("[发布等待]", JSON.stringify({ ...progress, idleSeconds, lastSamplingError }));
+          lastProgressLogAt = Date.now();
         }
         if (samplingProgress) return;
         samplingProgress = true;
         page.evaluate(() => {
           const root = document.querySelector("wujie-app.wujie_iframe")?.shadowRoot || document;
+          const text = value => String(value || "").replace(/\s+/g, " ").trim().slice(0, 160);
+          const cleanUrl = value => { if (!value) return ""; const url = new URL(value, location.href); return url.origin + url.pathname; };
           const progress = [...root.querySelectorAll("[role='progressbar'], progress, [class*='progress'], [class*='upload']")]
-            .map((node) => [node.innerText, node.getAttribute("aria-valuenow"), node.value, node.style.width]);
+            .map((node) => [text(node.innerText), node.getAttribute("aria-valuenow"), node.value, node.style.width]);
           const controls = [...root.querySelectorAll("button, [role='alert'], video")]
-            .map((node) => [node.innerText, node.disabled, node.currentSrc]);
-          return JSON.stringify([location.href, progress, controls]);
+            .map((node) => [text(node.innerText), node.disabled, cleanUrl(node.currentSrc)]);
+          const dialogs = [...root.querySelectorAll('[role="dialog"], .semi-modal-content')]
+            .filter(node => node.getBoundingClientRect().width > 0).slice(0, 3).map(node => text(node.innerText));
+          return JSON.stringify({ url: cleanUrl(location.href), progress, controls, dialogs });
         }).then((state) => {
+          lastSamplingError = "";
           if (activeWin === win && state !== lastPageState) {
             lastPageState = state;
             lastProgressAt = Date.now();
+            if (Date.now() - lastProgressLogAt >= 15000) {
+              console.log("[发布进度]", JSON.stringify({ ...getPublishProgress(page), pageState: JSON.parse(state) }));
+              lastProgressLogAt = Date.now();
+            }
           }
-        }).catch(() => {}).finally(() => { samplingProgress = false; });
+        }).catch(error => {
+          if (lastSamplingError !== error.message) console.warn("[发布进度采样失败]", error.message);
+          lastSamplingError = error.message;
+        }).finally(() => { samplingProgress = false; });
       }, 5000);
 
       await prepareElectronPublishPage(page);
@@ -351,6 +380,7 @@ async function doUpload(data, transport, queueDone) {
         }
       }
 
+      setPublishStage(page, "打开平台发布页");
       if (isXhsTask || data.pt.indexOf("视频") !== -1) {
         await page.goto(data.url, {
           waitUntil: "domcontentloaded",
@@ -423,6 +453,7 @@ async function doUpload(data, transport, queueDone) {
           const currentUrl = page.url();
           if (isExpectedPublishUrl(data, currentUrl)) {
             if (needsRealPublishSessionProbe(data.pt)) {
+              setPublishStage(page, "核验真实发布页登录状态");
               const sessionProbe = await probeRealPublishSession(
                 page,
                 data.pt
@@ -455,6 +486,7 @@ async function doUpload(data, transport, queueDone) {
               console.log(`[auth] ${sessionProbe.reason}`);
             }
             const action = Type[data.pt];
+            setPublishStage(page, "执行平台发布流程");
             if (typeof action !== "function") {
               // pt 没注册处理器属于配置/调用方错误，重试 5 次也变不出来 handler，
               // 反而会反复打开同一个 URL，触发站点重复登录（典型例子：账号管理
@@ -472,7 +504,7 @@ async function doUpload(data, transport, queueDone) {
               finishOnce();
               return;
             }
-            await action(page, data, win, createAttemptTransport(), finishOnce);
+            await action(page, data, win, createAttemptTransport(page), finishOnce);
           } else {
             console.log(
               `尝试${currentAttempt} URL不匹配: ${currentUrl}，关闭窗口并重新尝试`
@@ -508,6 +540,8 @@ async function doUpload(data, transport, queueDone) {
           }
         } catch (err) {
           if (finished) return;
+          console.error("[发布失败阶段]", JSON.stringify({ ...getPublishProgress(page), error: err.message,
+            lastPageState: lastPageState ? JSON.parse(lastPageState) : null, lastSamplingError }));
           console.log(`尝试${currentAttempt}执行平台逻辑失败:`, err);
           const failurePayload = err && err._mmUploadFailurePayload;
           if (currentAttempt >= maxRetries) {

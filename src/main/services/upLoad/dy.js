@@ -1,5 +1,8 @@
 import { configureDyPublication } from "./dyPublicationOptions.js";
+import { runWithDyResponse, requireDySuccess } from "./dyApiResponses.js";
 import path from "path";
+import fs from "fs";
+import { setPublishStage, getPublishProgress } from "../publishStage.js";
 import maybeClosePublishWindow from "./closeWindow.js";
 import { resolveDyCreativeStatementLabel } from "../../../shared/creativeStatement.js";
 import {
@@ -318,20 +321,25 @@ async function fillDyTitle(page, title) {
 export default async function (page, data, window, event) {
   const isDraftMode =
     data.publishMode === "draft" || data.publishToDraft === true;
+  let publication;
+  let submitting = false;
 
   try {
     // 等待 name=upload-btn 的 input 出现
+    setPublishStage(page, "等待抖音视频上传控件");
     await page.waitForSelector('input[name="upload-btn"]', {
       timeout: WAIT_SELECTOR_APPEAR_MS,
     });
     const uploadInputs = await page.$$('input[name="upload-btn"]');
     // 取最后一个 input 元素
     const uploadFileHandle = uploadInputs[uploadInputs.length - 1];
+    setPublishStage(page, "上传抖音视频文件");
     await uploadFileHandle.uploadFile(path.resolve(data.filePath));
   } catch (e) {
     console.error("❌ 输入文件失败", e);
   }
   try {
+    setPublishStage(page, "填写抖音标题和话题");
     await page.waitForSelector(".semi-input", {
       timeout: WAIT_SELECTOR_APPEAR_MS,
     });
@@ -340,11 +348,7 @@ export default async function (page, data, window, event) {
     const input2 = await page.$(".zone-container.editor-kit-container");
     await input2.click(); // 三击全选
     const description = String(data.data.bdText || "").trim();
-    const fallbackDescription = [data.data.bt2, data.data.bq]
-      .map(value => String(value || "").trim())
-      .filter(Boolean)
-      .join(" ");
-    await page.keyboard.type(description || fallbackDescription, { delay: 50 });
+    await page.keyboard.type(description, { delay: 50 });
     // 抖音话题只有遇到空格/回车才会把当前 #xxx 转成话题胶囊；
     // bq 末尾没有分隔符会导致最后一个标签没被识别，这里补一次空格触发。
     await page.keyboard.press("Space");
@@ -354,6 +358,7 @@ export default async function (page, data, window, event) {
   }
 
   try {
+    setPublishStage(page, "等待抖音上传和转码完成，预览播放器就绪");
     // 不依赖会随打包变化的 container-xxx：等预览区 video（抖音 CDN）与同容器内的 rc 进度条同时出现
     await pollPageUntil(
       page,
@@ -375,6 +380,7 @@ export default async function (page, data, window, event) {
     );
 
     // 「保存权限」区域往往在预览视频就绪后才挂载；放在预览等待之后，并放宽文案/控件匹配
+    setPublishStage(page, "设置抖音保存权限");
     await page.waitForFunction(
       () => {
         const norm = (t) => String(t).replace(/\s+/g, "").trim();
@@ -421,18 +427,35 @@ export default async function (page, data, window, event) {
     if (!saved) throw new Error("未找到保存权限-不允许");
 
     // 自主声明入口在视频转码完成后才出现，必须在点击发布前完成
+    setPublishStage(page, "设置抖音自主声明");
     await selectDyCreativeStatementWithRetry(page, data);
 
     await configureDyPublication(page, data);
 
     const isOfficialSchedule = Boolean(data.officialScheduledPublish);
     if (isOfficialSchedule) {
+      setPublishStage(page, "设置抖音官方预约时间");
       await setOfficialSchedule(page, "抖音", data.publishAt);
     }
 
     const previousUrl = page.url();
-    await clickDyPublish(page, isDraftMode);
+    setPublishStage(page, isDraftMode ? "提交抖音草稿" : "提交抖音发布");
+    if (isDraftMode) {
+      await clickDyPublish(page, true);
+    } else {
+      submitting = true;
+      const receipt = await runWithDyResponse(page, "发布作品", response =>
+        new URL(response.url()).pathname === "/web/api/media/aweme/create_v2/" &&
+        response.request().method() === "POST", () => clickDyPublish(page, false), 600000);
+      const body = requireDySuccess(receipt, "发布作品");
+      if (!body.item_id) throw new Error("抖音发布接口未返回作品ID，发布结果待核对，禁止自动重发");
+      publication = { id: String(body.item_id), url: `https://www.douyin.com/video/${body.item_id}`,
+        apiReceipt: { requestPath: receipt.requestPath, httpStatus: receipt.httpStatus, statusCode: body.status_code,
+          requestId: body.extra?.logid }, chapters: data.dyChapters, covers: data.dyCovers };
+      fs.writeFileSync(path.join(path.dirname(path.resolve(data.filePath)), "douyin-publication.json"), JSON.stringify(publication, null, 2));
+    }
     if (isOfficialSchedule) {
+      setPublishStage(page, "等待抖音官方预约确认");
       await waitForOfficialScheduleAccepted(page, "抖音", previousUrl, data.title, window);
     }
     console.log(
@@ -443,13 +466,16 @@ export default async function (page, data, window, event) {
           : "✅ 抖音视频已触发发布"
     );
     if (!isDraftMode && !isOfficialSchedule) {
+      setPublishStage(page, "等待抖音发布成功并进入作品管理");
       await waitForDyImmediatePublish(page);
     }
+    setPublishStage(page, "抖音发布流程完成");
     event.reply("puppeteerFile-done", {
       ...data,
       status: true,
       scheduled: isOfficialSchedule,
       officialScheduled: isOfficialSchedule,
+      outcome: publication,
       message: isDraftMode
         ? "保存草稿成功"
         : isOfficialSchedule
@@ -459,9 +485,12 @@ export default async function (page, data, window, event) {
     maybeClosePublishWindow(data, window);
   } catch (e) {
     const detail = (e && e.message) || String(e);
+    console.error("[抖音发布失败阶段]", JSON.stringify({ ...getPublishProgress(page), error: detail }));
     event.reply("puppeteerFile-done", {
       ...data,
       status: false,
+      needsAttention: submitting,
+      outcome: publication || (submitting ? "unknown" : undefined),
       message: detail.length > 200 ? `${detail.slice(0, 200)}…` : detail,
     });
     console.error("❌ 上传失败", e);

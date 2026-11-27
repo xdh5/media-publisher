@@ -1,7 +1,10 @@
+import { setPublishStage } from "../publishStage.js";
 import path from "path";
 import fs from "fs";
 import os from "os";
 import crypto from "crypto";
+import { pollPageUntil } from "./uploadTimeouts.js";
+import { runWithDyResponse, requireDySuccess } from "./dyApiResponses.js";
 
 async function prepareCover(page, filename, portrait) {
   const source = fs.readFileSync(path.resolve(filename));
@@ -41,21 +44,47 @@ async function clickText(page, text, selector = "button") {
 }
 
 export async function generateDyChapters(page) {
+  setPublishStage(page, "打开抖音智能章节编辑器");
   await clickText(page, "为进度条增加章节信息，让视频结构更清晰", "p");
   await page.waitForFunction(() => [...document.querySelectorAll("button")]
     .some(node => node.textContent.replace(/\s+/g, "") === "智能生成"), { timeout: 15000, polling: 100 });
-  const completed = page.waitForResponse(async response => {
-    if (new URL(response.url()).pathname !== "/aweme/v1/chapter/recommend/get" || !response.ok()) return false;
-    const body = await response.json();
-    return Array.isArray(body.chapter_list) && body.chapter_list.length > 0;
-  }, { timeout: 600000 });
-  await clickText(page, "智能生成");
-  console.log("[dy] 已启动平台智能章节生成，等待章节推荐接口返回结果");
-  const response = await completed;
-  const body = await response.json();
-  await page.waitForFunction(() => [...document.querySelectorAll("button")].some(node =>
-    node.textContent.replace(/\s+/g, "") === "保存" && !node.disabled), { timeout: 15000, polling: 100 });
+  const completed = await runWithDyResponse(page, "智能章节推荐结果", async response => {
+    if (new URL(response.url()).pathname !== "/aweme/v1/chapter/recommend/get") return false;
+    if (!response.ok()) return true;
+    const result = await response.json();
+    return result.status_code !== 0 || (Array.isArray(result.chapter_list) && result.chapter_list.length > 0);
+  }, async () => {
+    const started = await runWithDyResponse(page, "启动智能章节生成", response =>
+      new URL(response.url()).pathname === "/aweme/v1/chapter/recommend/post" && response.request().method() === "POST",
+    () => clickText(page, "智能生成"));
+    requireDySuccess(started, "启动智能章节生成");
+    setPublishStage(page, "等待抖音智能章节推荐接口返回");
+  }, 600000);
+  const body = requireDySuccess(completed, "智能章节推荐结果");
+  console.log(`[dy] 推荐接口已返回${body.chapter_list.length}章，等待页面允许保存`);
+  setPublishStage(page, "将抖音智能章节推荐结果填入编辑器");
+  // 接口结果写入推荐缓存后，编辑器可能仍保留空列表；再次触发智能生成应用已有结果。
+  await page.waitForTimeout(4000);
+  const ready = await page.evaluate(() => [...document.querySelectorAll("button")].some(node =>
+    node.textContent.trim() === "保存" && !node.disabled && node.getBoundingClientRect().width > 0));
+  if (!ready) {
+    await clickText(page, "智能生成");
+    console.log("[dy] 已再次触发智能生成，等待推荐章节填入编辑器");
+  }
+  await pollPageUntil(page, () => {
+    const dialog = [...document.querySelectorAll('[role="dialog"]')].find(node =>
+      node.getBoundingClientRect().width > 0 && node.textContent.includes("章节要点"));
+    return !!dialog && /章节数[：:]?\s*[1-9]\d*/.test(dialog.innerText) &&
+      [...dialog.querySelectorAll("button")].some(node => node.textContent.trim() === "保存" && !node.disabled);
+  }, 120000, 250, "抖音推荐章节尚未填入编辑器或保存按钮不可用，未提交作品");
+  console.log("[抖音章节编辑器就绪]", JSON.stringify(await page.evaluate(() => ({
+    chapterCount: Number(document.body.innerText.match(/章节数[：:]?\s*(\d+)/)?.[1] || 0),
+    saveEnabled: [...document.querySelectorAll("button")].some(node => node.textContent.trim() === "保存" &&
+      !node.disabled && node.getBoundingClientRect().width > 0),
+  }))));
   await clickText(page, "保存");
+  setPublishStage(page, "保存抖音智能章节并等待编辑器关闭");
+  console.log("[dy] 已点击章节保存，等待编辑器关闭");
   await page.waitForFunction(() => ![...document.querySelectorAll("button")].some(node =>
     node.textContent.replace(/\s+/g, "") === "智能生成" && node.getBoundingClientRect().width > 0), { timeout: 15000, polling: 100 });
   console.log(`[dy] 智能章节已生成并保存：${body.chapter_list.length}章`);
@@ -67,33 +96,52 @@ export { clickText };
 
 async function uploadCoverImage(page, filename) {
   const input = await page.$("input.semi-upload-hidden-input");
-  await input.uploadFile(path.resolve(filename));
-  await page.waitForNetworkIdle({ idleTime: 500, timeout: 60000 });
+  const receipt = await runWithDyResponse(page, "封面图片上传确认", response => {
+    const url = new URL(response.url());
+    return ["imagex.bytedanceapi.com", "open.bytedanceapi.com"].includes(url.hostname) &&
+      url.searchParams.get("Action") === "CommitImageUpload" && response.request().method() === "POST";
+  }, () => input.uploadFile(path.resolve(filename)), 600000);
+  const error = receipt.body.ResponseMetadata.Error;
+  if (error) throw new Error(`封面图片上传失败：${error.Code}，${error.Message}`);
+  const uploaded = receipt.body.Result.Results;
+  console.log("[抖音封面上传回执]", JSON.stringify(uploaded.map(item => ({ uri: item.Uri, statusCode: item.UriStatus }))));
+  if (!uploaded.length || uploaded.some(item => !item.Uri || ![200, 2000].includes(item.UriStatus))) {
+    throw new Error("封面上传确认接口未返回成功的图片URI");
+  }
+  return { requestPath: receipt.requestPath, httpStatus: receipt.httpStatus,
+    images: uploaded.map(item => ({ uri: item.Uri, statusCode: item.UriStatus })) };
 }
 
 export async function uploadDyCovers(page, landscape, portrait) {
+  setPublishStage(page, "准备抖音横竖封面文件");
   const landscapeFile = await prepareCover(page, landscape, false);
   const portraitFile = portrait ? await prepareCover(page, portrait, true) : null;
   const files = [landscapeFile, portraitFile].filter(Boolean);
+  const receipts = [];
   for (let index = 0; index < files.length; index++) {
+    setPublishStage(page, index === 0 ? "上传并保存抖音横版封面" : "上传并保存抖音竖版封面");
     await page.evaluate(position => {
       document.querySelectorAll('[class^="coverControl-"] [class^="cover-"]:not([class^="cover-tip-"])')[position].click();
     }, index);
     await page.waitForSelector("input.semi-upload-hidden-input", { timeout: 15000 });
-    await uploadCoverImage(page, files[index]);
+    setPublishStage(page, index === 0 ? "上传抖音横版封面图片" : "上传抖音竖版封面图片");
+    const receipt = await uploadCoverImage(page, files[index]);
+    receipts.push({ orientation: index === 0 ? "landscape" : "portrait", ...receipt });
+    setPublishStage(page, index === 0 ? "保存抖音横版封面并等待编辑器关闭" : "保存抖音竖版封面并等待编辑器关闭");
     await clickText(page, "完成");
-    await page.waitForFunction(() => ![...document.querySelectorAll("button")].some(node =>
-      node.textContent.trim() === "完成" && node.getBoundingClientRect().width > 0), { timeout: 60000, polling: 100 });
+    await pollPageUntil(page, () => {
+      const buttons = [...document.querySelectorAll("button")];
+      const guide = [...document.querySelectorAll("button, [role='button'], span")].find(node => node.textContent.trim() === "暂不设置" && node.getBoundingClientRect().width > 0);
+      if (guide) guide.click();
+      return !buttons.some(node => node.textContent.trim() === "完成" && node.getBoundingClientRect().width > 0);
+    }, 60000, 250, "抖音封面编辑器尚未关闭");
   }
   console.log("[dy] 自定义封面已上传并保存");
+  return receipts;
 }
 
 export async function configureDyPublication(page, data) {
   const options = data.publishOptions || {};
-  const finance = data.phone === "finance";
-  if (options.dyAiChapters || finance) data.dyChapters = await generateDyChapters(page);
-  if (finance && (!options.coverPath || !options.portraitCoverPath)) {
-    throw new Error("财经抖音发布必须提供横竖自定义封面");
-  }
-  if (options.coverPath) await uploadDyCovers(page, options.coverPath, options.portraitCoverPath);
+  if (options.dyAiChapters) data.dyChapters = await generateDyChapters(page);
+  if (options.coverPath) data.dyCovers = await uploadDyCovers(page, options.coverPath, options.portraitCoverPath);
 }

@@ -1,3 +1,4 @@
+import { setPublishStage } from "../publishStage.js";
 import { resolveSphSurface } from "./sphSurface.js";
 import { uploadSphCovers } from "./sphCover.js";
 import path from "path";
@@ -14,88 +15,37 @@ import {
 } from "./uploadTimeouts.js";
 import { setOfficialSchedule } from "./officialSchedule.js";
 
-const SEL_ORIGINAL_CHECKBOX =
-  "wujie-app.wujie_iframe >>> .declare-original-checkbox .ant-checkbox-wrapper";
-const SEL_ORIGINAL_DIALOG_CHECK =
-  "wujie-app.wujie_iframe >>> .declare-original-dialog .weui-desktop-dialog label.ant-checkbox-wrapper";
-const SEL_ORIGINAL_DIALOG_OK =
-  "wujie-app.wujie_iframe >>> .declare-original-dialog .weui-desktop-dialog button.weui-desktop-btn_primary";
-
-/**
- * 声明原创：部分账号/版本无入口或已默认处理，失败不影响后续发布。
- */
-async function tryDeclareOriginal(page) {
-  let yInput;
-  try {
-    yInput = await page.waitForSelector(SEL_ORIGINAL_CHECKBOX, {
-      timeout: 3000,
-    });
-  } catch (_) {
-    console.log("声明原创：未找到勾选入口，跳过");
-    return;
-  }
-
-  try {
-    await yInput.click();
-  } catch (e) {
-    console.warn(
-      "声明原创：勾选入口点击失败，跳过",
-      e && e.message ? e.message : e
-    );
-    return;
-  }
-
-  try {
-    await page.waitForSelector(
-      "wujie-app.wujie_iframe >>> .weui-desktop-dialog__bd .protocol-text",
-      { timeout: 2500 }
-    );
-    const protocol = await page.$(
-      "wujie-app.wujie_iframe >>> .weui-desktop-dialog__bd .protocol-text"
-    );
-    if (protocol) await protocol.click();
-    await page.waitForTimeout(300);
-    const clicked = await page.evaluate(() => {
-      const app = document.querySelector("wujie-app.wujie_iframe");
-      const root = app?.shadowRoot || document;
-      const bodies = root.querySelectorAll(
-        ".weui-desktop-dialog__bd"
-      );
-      for (const body of bodies) {
-        const dlg = body.closest(".weui-desktop-dialog") || body.parentElement;
-        const btns = (dlg || body).querySelectorAll(
-          "button.weui-desktop-btn_primary"
-        );
-        for (const btn of btns) {
-          if (
-            String(btn.textContent || "")
-              .trim()
-              .includes("声明原创")
-          ) {
-            btn.click();
-            return true;
-          }
-        }
-      }
+/** 声明原创必须在上传完成后勾选，并核对页面状态。 */
+async function declareSphOriginal(page) {
+  await page.waitForFunction(() => {
+    const root = document.querySelector("wujie-app.wujie_iframe")?.shadowRoot || document;
+    const container = root.querySelector(".declare-original-checkbox");
+    if (!container || !container.getBoundingClientRect().width) return false;
+    if (container.querySelector("input:checked, .ant-checkbox-checked")) return true;
+    const label = container.querySelector(".ant-checkbox-wrapper");
+    if (!label) return false;
+    label.click();
+    return true;
+  }, { timeout: 15000, polling: 500 });
+  await page.waitForFunction(() => {
+    const root = document.querySelector("wujie-app.wujie_iframe")?.shadowRoot || document;
+    const dialogs = [...root.querySelectorAll(".weui-desktop-dialog")]
+      .filter(node => node.getBoundingClientRect().width > 0 && /原创/.test(node.textContent));
+    for (const dialog of dialogs) {
+      const protocol = dialog.querySelector(".protocol-text");
+      const label = dialog.querySelector("label.ant-checkbox-wrapper");
+      const agreement = label || protocol;
+      if (agreement && !agreement.querySelector("input:checked, .ant-checkbox-checked")) agreement.click();
+      const confirm = [...dialog.querySelectorAll("button.weui-desktop-btn_primary")]
+        .find(node => !node.disabled && /声明原创|确认|确定/.test(node.textContent));
+      if (confirm) confirm.click();
       return false;
-    });
-    if (clicked) await page.waitForTimeout(800);
-  } catch (_) {
-    /* 非首次账号或协议弹窗未出现 */
-  }
-
-  try {
-    const cBox = await page.waitForSelector(SEL_ORIGINAL_DIALOG_CHECK, {
-      timeout: 3000,
-    });
-    await cBox.click();
-    const aBtn = await page.waitForSelector(SEL_ORIGINAL_DIALOG_OK, {
-      timeout: 3000,
-    });
-    await aBtn.click();
-  } catch (_) {
-    console.log("声明原创：未出现后续确认框或已完成，跳过");
-  }
+    }
+    return !!root.querySelector(".declare-original-checkbox input:checked, .declare-original-checkbox .ant-checkbox-checked");
+  }, { timeout: 30000, polling: 500 }).catch(() => {
+    throw new Error("视频号声明原创未完成勾选或确认，停止发表");
+  });
+  console.log("[sph] 声明原创已勾选并核验");
 }
 
 /**
@@ -388,6 +338,7 @@ async function ensureSphFileSelected(page, filePath, attempts = 3) {
 }
 
 async function waitSphUploadProcessing(page) {
+  setPublishStage(page, "等待视频号视频上传和平台处理完成");
   const deadline = Date.now() + WAIT_UPLOAD_PROCESSING_MS;
   let lastProgress = "";
   let lastProgressAt = Date.now();
@@ -423,7 +374,7 @@ async function waitSphUploadProcessing(page) {
         done: !processing && (percentage === null || percentage >= 100) &&
           Boolean(publishGroup && publishGroup.querySelector("button,[role='button']")),
         progress: percentage === null ? "平台处理中" : `${percentage}%`,
-        stallMs: percentage === 0 ? 90000 : percentage !== null && percentage < 100 ? 180000 : 300000,
+        stallMs: 10 * 60 * 1000,
       };
     });
     if (state.done) {
@@ -570,6 +521,7 @@ export default async function (page, data, window, event, onFinish) {
   console.log(data);
   await page.waitForTimeout(1000 * 5);
   page = resolveSphSurface(page);
+  setPublishStage(page, "等待视频号上传控件并选择视频文件");
   try {
     await ensureSphFileSelected(page, path.resolve(data.filePath));
   } catch (err) {
@@ -585,17 +537,12 @@ export default async function (page, data, window, event, onFinish) {
   }
 
   const suppliedDescription = String(data.data.bdText || "").trim();
-  const description = suppliedDescription || [data.data.bt2, data.data.bq]
-    .map((value) => String(value || "").trim())
-    .filter(Boolean)
-    .join(" ");
-  const shortTitle = (data.data.bt2Filled || data.data.bt2 || "").trim();
-  const normalizedShortTitle = shortTitle.replace(
-    /[，。、\/,;:!?'"()\[\]{}<>]/g,
-    " "
-  );
+  const description = suppliedDescription;
+  const shortTitle = (data.data.bt2 || "").trim();
+  const normalizedShortTitle = shortTitle;
   try {
     if (!description) throw new Error("视频号描述不能为空");
+    setPublishStage(page, "填写视频号描述和短标题");
     await fillSphTextAsBefore(page, description, normalizedShortTitle, {
       shortTitle: Boolean(shortTitle),
     });
@@ -609,6 +556,7 @@ export default async function (page, data, window, event, onFinish) {
     const link = resolveVideoLinkOption("视频号", data.publishOptions);
     if (link && link.enabled === true) {
       try {
+        setPublishStage(page, "添加视频号关联链接");
         const selectedLink = await attachSphVideoLink(page, link);
         console.log(
           `[sph][link] 已添加 ${selectedLink.type} ${selectedLink.value}: ${
@@ -629,6 +577,7 @@ export default async function (page, data, window, event, onFinish) {
     }
 
     try {
+      setPublishStage(page, "设置视频号创作声明");
       await applySphCreativeStatement(
         page,
         data.data && data.data.creativeStatement
@@ -640,9 +589,9 @@ export default async function (page, data, window, event, onFinish) {
       );
     }
 
-    await tryDeclareOriginal(page);
     await waitSphUploadProcessing(page);
 
+    setPublishStage(page, "核验视频号上传后的描述和短标题");
     let textState = await readSphTextState(
       page,
       description,
@@ -669,18 +618,23 @@ export default async function (page, data, window, event, onFinish) {
     }
     console.log(`[sph] 文案发布前校验成功：${JSON.stringify(textState)}`);
 
+    setPublishStage(page, "设置视频号主页和分享封面");
     const { coverPath, portraitCoverPath } = data.publishOptions || {};
-    if (data.phone === "finance" && (!coverPath || !portraitCoverPath)) {
-      throw new Error("财经视频号发布必须提供3:4和4:3两张封面");
-    }
     if (coverPath && portraitCoverPath) await uploadSphCovers(page, portraitCoverPath, coverPath);
+
+    if (data.publishOptions?.declareOriginal === true) {
+      setPublishStage(page, "声明并核验视频号原创");
+      await declareSphOriginal(page);
+    }
 
     const isOfficialSchedule = Boolean(data.officialScheduledPublish);
     if (isOfficialSchedule) {
+      setPublishStage(page, "设置视频号官方预约时间");
       await setOfficialSchedule(page, "视频号", data.publishAt);
     }
 
     // 所有表单项（包括商品）完成后，草稿和发布只能二选一执行。
+    setPublishStage(page, "提交视频号发布或草稿并等待确认");
     if (isDraftMode) await clickSphDraftButton(page);
     else await clickSphPublishButton(page);
     console.log(

@@ -4,39 +4,31 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import sys
 
-from platform_api.facebook.publish_to_facebook import list_facebook_accounts, publish_to_facebook
-from platform_api.instagram.publish_to_instagram import list_instagram_accounts, publish_to_instagram
-from platform_api.tiktok.publish_to_tiktok import list_tiktok_accounts, publish_to_tiktok
-from platform_api.youtube.publish_to_youtube import list_youtube_accounts, publish_to_youtube
+from platform_api.facebook.publish_to_facebook import (
+    list_facebook_accounts,
+    publish_to_facebook,
+)
+from platform_api.instagram.publish_to_instagram import (
+    list_instagram_accounts,
+    publish_to_instagram,
+)
+from platform_api.tiktok.publish_to_tiktok import (
+    list_tiktok_accounts,
+    publish_to_tiktok,
+)
+from platform_api.youtube.publish_to_youtube import (
+    list_youtube_accounts,
+    publish_to_youtube,
+)
 
 
 def _dump(payload: dict | list) -> None:
     sys.stdout.write(json.dumps(payload, ensure_ascii=False) + "\n")
 
 
-# GitHub Action 仍注入旧前缀。chinese 账号组没有本地 .env 时沿用这些密钥。
-_LEGACY_PREFIX = {"chinese": "LANGUAGE_LEARNING_"}
-
-
-def _apply_legacy_env(group: str) -> None:
-    legacy = _LEGACY_PREFIX.get(str(group or "").strip().lower())
-    if not legacy:
-        return
-    target = str(group).strip().upper() + "_"
-    for key, value in list(os.environ.items()):
-        text = str(value or "").strip()
-        if not key.startswith(legacy) or not text:
-            continue
-        dest = target + key[len(legacy):]
-        if not os.environ.get(dest):
-            os.environ[dest] = text
-
-
 def _accounts(group: str, platform: str | None = None) -> list[dict]:
-    _apply_legacy_env(group)
     rows = []
     for item in (list_youtube_accounts(group) if platform in (None, "youtube") else []):
         rows.append({
@@ -74,8 +66,29 @@ def _accounts(group: str, platform: str | None = None) -> list[dict]:
 
 
 def _publish(args: argparse.Namespace) -> dict:
-    _apply_legacy_env(args.phone)
-    platform = str(args.platform).strip().lower()
+    """独立命令从 Publisher 目录解析账号与凭据引用。"""
+    from publishing.platforms import resolve_platform
+
+    from .account_registry import account_context, registry
+
+    data = registry()
+    codes = {row["code"] for row in data["groups"] if row["name"] == args.phone and row.get("enabled", True)}
+    platform = resolve_platform(args.platform).code
+    matches = [row for row in data["members"] if row["group_code"] in codes
+               and row["platform"] == platform and row.get("enabled", True)
+               and args.account_id in {row.get("account_key"), row.get("connector_account_id")}]
+    if len(matches) > 1:
+        raise ValueError("账号匹配不唯一，请指定 account_key")
+    if matches:
+        row = matches[0]
+        with account_context(row) as key:
+            return _publish_with_credentials(argparse.Namespace(**{**vars(args), "phone": key, "account_id": row["connector_account_id"]}))
+    return _publish_with_credentials(args)
+
+
+def _publish_with_credentials(args: argparse.Namespace) -> dict:
+    from publishing.platforms import resolve_platform
+    platform = resolve_platform(args.platform).code
     group = str(args.phone).strip()
     account_id = str(args.account_id).strip()
     publish_at = str(args.publish_at or "").strip() or None
@@ -86,7 +99,9 @@ def _publish(args: argparse.Namespace) -> dict:
             args.title,
             description=args.description or "",
             account=group,
-            privacy_status=args.privacy or "public",
+            privacy_status=args.privacy,
+            category_id=args.category_id, language=args.language,
+            made_for_kids=args.made_for_kids, thumbnail_path=args.thumbnail_path or None,
             publish_at=publish_at,
             publication_id=args.publication_id or "",
         )
@@ -94,12 +109,12 @@ def _publish(args: argparse.Namespace) -> dict:
         return publish_to_tiktok(
             account_id,
             args.video_url,
-            args.description or args.title or "",
+            args.description or "",
             account=group,
             publish_at=publish_at,
         )
     if platform == "instagram":
-        return publish_to_instagram(account_id, args.video_url, args.description or args.title or "", publish_at=publish_at)
+        return publish_to_instagram(account_id, args.video_url, args.description or "", publish_at=publish_at)
     if platform == "facebook":
         return publish_to_facebook(
             account_id,
@@ -129,6 +144,11 @@ def main() -> None:
     publish.add_argument("--publish-at", default="")
     publish.add_argument("--publication-id", default="")
     publish.add_argument("--privacy", default="public")
+
+    publish.add_argument("--category-id", default="24")
+    publish.add_argument("--language", default="zh")
+    publish.add_argument("--made-for-kids", action="store_true")
+    publish.add_argument("--thumbnail-path", default="")
 
     args = parser.parse_args()
     try:

@@ -1,6 +1,6 @@
 'use strict'
 
-import { ACCOUNT_GROUPS } from "../services/matrixDataPaths";
+import { validAccountGroup } from "../services/matrixDataPaths";
 
 const OFFICIAL_ALIASES = {
   youtube: 'youtube',
@@ -112,10 +112,10 @@ export function parseLoginArgs(subArgv) {
   const official = OFFICIAL_ALIASES[lower]
   if (official) {
     const group = String(out.phone || '').split('-')[0]
-    if (!ACCOUNT_GROUPS.has(group)) {
+    if (!validAccountGroup(group)) {
       return {
         ok: false,
-        error: '官方登录必须用 --phone 指定账号组：finance、korean 或 chinese'
+        error: '官方登录必须用 --phone 指定有效账号组'
       }
     }
     out.platform = official
@@ -148,7 +148,7 @@ export function parseLoginArgs(subArgv) {
     return { ok: true, value: out }
   }
 
-  if (out.show && out.platform !== '视频号' && out.platform !== '抖音') {
+  if (out.show && !['视频号', '抖音', '哔哩哔哩'].includes(out.platform)) {
     console.warn('media-publisher: CLI 模式不打开登录窗口，已忽略 --show。')
     out.show = false
   }
@@ -200,7 +200,7 @@ YouTube 走 Google 官方授权，TikTok、Instagram、Facebook 走 Zernio。凭
 
 选项:
   -p, --platform <id>   扫码：dy / sph / ks / tt / xhs / blbl；官方：youtube / tiktok / instagram / facebook
-      --phone <id>      扫码为手机号或账号组；官方登录必须是 finance、korean 或 chinese
+      --phone <id>      扫码为手机号或账号组；官方登录必须指定有效账号组
       --client-secret <文件>  YouTube 的 Google 客户端 JSON
       --api-key <key>   Zernio API key，TikTok 与 Instagram/Facebook 使用各自的 key
       --profile <id>    Zernio 有多个 profile 时指定

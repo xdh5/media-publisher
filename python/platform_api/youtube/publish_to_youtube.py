@@ -231,7 +231,7 @@ def _upload_tag(video: Path, publication_id: str) -> str:
     with video.open("rb") as stream:
         for chunk in iter(lambda: stream.read(1024 * 1024), b""):
             digest.update(chunk)
-    return f"media-factory:{digest.hexdigest()}"
+    return f"media-publisher:{digest.hexdigest()}"
 
 
 def _find_existing_video(youtube, channel_id: str, title: str, upload_tag: str) -> dict | None:
@@ -283,7 +283,8 @@ def _find_existing_video(youtube, channel_id: str, title: str, upload_tag: str) 
         ids = ",".join(item["video_id"] for item in matches[offset:offset + 50])
         details = youtube.videos().list(part="snippet,status,processingDetails", id=ids).execute()
         for item in details.get("items") or []:
-            if upload_tag not in ((item.get("snippet") or {}).get("tags") or []):
+            if not any(str(tag).rsplit(":", 1)[-1] == upload_tag.rsplit(":", 1)[-1]
+                       for tag in ((item.get("snippet") or {}).get("tags") or [])):
                 continue
             status = item.get("status") or {}
             processing = (item.get("processingDetails") or {}).get("processingStatus")
@@ -306,6 +307,7 @@ def publish_to_youtube(
     tags: list[str] | None = None,
     category_id: str = DEFAULT_CATEGORY_ID,
     privacy_status: str = "private",
+    made_for_kids: bool = False,
     thumbnail_path: str | Path | None = None,
     caption_path: str | Path | None = None,
     language: str = DEFAULT_LANGUAGE,
@@ -321,6 +323,8 @@ def publish_to_youtube(
     normalized_title = str(title).strip()
     if not normalized_title:
         raise InvalidParameterError("title 不能为空", {"parameter": "title"})
+    if len(normalized_title) > 100:
+        raise InvalidParameterError("YouTube 标题超过100字，请由发布业务指定标题", {"parameter": "title"})
     if privacy_status not in YOUTUBE_PRIVACY_STATUSES:
         raise InvalidParameterError(
             f"privacy_status 必须从 {YOUTUBE_PRIVACY_STATUSES} 中选择",
@@ -338,33 +342,27 @@ def publish_to_youtube(
     credentials = _load_credentials(channel_id, account)
     try:
         with build("youtube", "v3", http=authorized_http(credentials), cache_discovery=False) as youtube:
-            existing = _find_existing_video(youtube, channel_id, normalized_title[:100], upload_tag)
+            existing = _find_existing_video(youtube, channel_id, normalized_title, upload_tag)
             if existing:
                 actual = existing["status"]
-                if actual.get("privacyStatus") != effective_privacy_status or actual.get("publishAt") != normalized_publish_at:
-                    desired = {"privacyStatus": effective_privacy_status, "selfDeclaredMadeForKids": False}
-                    if normalized_publish_at:
-                        desired["publishAt"] = normalized_publish_at
-                    youtube.videos().update(part="status", body={"id": existing["video_id"], "status": desired}).execute()
                 print(
                     f"[YouTube] 相同产物已存在 {existing.get('duplicate_count') or 1} 条，跳过上传 "
-                    f"title={normalized_title[:100]!r} video_id={existing['video_id']}",
+                    f"title={normalized_title!r} video_id={existing['video_id']}",
                     file=sys.stderr, flush=True,
                 )
-                _apply_thumbnail(youtube, existing["video_id"], thumbnail)
                 return {
                     "video_id": existing["video_id"],
                     "video_url": f"https://www.youtube.com/watch?v={existing['video_id']}",
                     "channel_id": channel_id,
-                    "privacy_status": effective_privacy_status,
-                    "publish_at": normalized_publish_at,
-                    "scheduled": normalized_publish_at is not None,
+                    "privacy_status": actual.get("privacyStatus"),
+                    "publish_at": actual.get("publishAt"),
+                    "scheduled": actual.get("publishAt") is not None,
                     "reused": True,
                     "duplicate_count": int(existing.get("duplicate_count") or 1),
                 }
             video_status = {
                 "privacyStatus": effective_privacy_status,
-                "selfDeclaredMadeForKids": False,
+                "selfDeclaredMadeForKids": made_for_kids,
                 "embeddable": True,
                 "license": "youtube",
             }
@@ -374,9 +372,9 @@ def publish_to_youtube(
                 part="snippet,status",
                 body={
                     "snippet": {
-                        "title": normalized_title[:100],
+                        "title": normalized_title,
                         "description": str(description),
-                        "tags": normalized_tags[:500],
+                        "tags": normalized_tags,
                         "categoryId": str(category_id),
                         "defaultLanguage": language,
                         "defaultAudioLanguage": language,

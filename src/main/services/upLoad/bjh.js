@@ -1,3 +1,4 @@
+import { setPublishStage } from "../publishStage.js";
 import path from 'path'
 import maybeClosePublishWindow from './closeWindow.js'
 import { setOfficialSchedule } from './officialSchedule.js'
@@ -332,6 +333,7 @@ async function clickBjhActionButton(page, buttonText) {
 }
 
 export default async function (page, data, window, event) {
+  setPublishStage(page, '等待百家号视频上传控件');
   const isDraftMode =
     data.publishMode === 'draft' || data.publishToDraft === true
   // 使用try-catch包装所有可能出错的操作
@@ -350,6 +352,7 @@ export default async function (page, data, window, event) {
     const uploadInputs = await page.$$(combinedSelector)
     if (!uploadInputs.length) throw new Error('未找到百家号上传 input')
     const uploadFileHandle = uploadInputs[0]
+    setPublishStage(page, '上传百家号视频文件')
     await uploadFileHandle.uploadFile(path.resolve(data.filePath))
     console.log(`[bjh] 已通过 ${combinedSelector} 上传文件`)
   } catch (err) {
@@ -412,6 +415,7 @@ export default async function (page, data, window, event) {
     // hash 中段每次构建可能变，用前缀+后缀模糊匹配。
     const TITLE_SELECTOR =
       'div[contenteditable="true"][class*="contentEditable"], div[contenteditable="true"][class*="FeEditorApp"]'
+    setPublishStage(page, '填写百家号作品标题')
     await page.waitForSelector(TITLE_SELECTOR, { timeout: 20 * 1000 })
     const titleHandle = await page.$(TITLE_SELECTOR)
     if (!titleHandle) throw new Error('未找到标题 contenteditable')
@@ -456,6 +460,7 @@ export default async function (page, data, window, event) {
   // 标题/地址填完后立即选择创作声明（必须声明）
   try {
     console.log('选择创作声明')
+    setPublishStage(page, '设置百家号创作声明')
     await selectBjhCreativeStatement(page, data)
   } catch (e) {
     console.warn('百家号创作声明选择未完成:', e?.message || e)
@@ -464,6 +469,7 @@ export default async function (page, data, window, event) {
   // 点击提交按钮
   try {
     // 等待 .upload-step-progress  .progress-container.uploading 消失
+    setPublishStage(page, '等待百家号视频上传完成')
     // 用 pollPageUntil 替代 waitForSelector，避免 puppeteer 默认 protocolTimeout
     // (约 180s) 在弱网/大文件下把 CDP Runtime.callFunctionOn 提前砍掉。
     await pollPageUntil(
@@ -488,6 +494,7 @@ export default async function (page, data, window, event) {
     // 百家号有两层上传状态。底部按钮出现时，封面区域仍可能在转码；
     // 必须等第二层进度条也消失后再点定时发布，否则按钮会静默无响应。
     console.log('[bjh] 检查视频是否仍在上传（#cover-tabs-container .cheetah-progress-inner）...')
+    setPublishStage(page, '等待百家号封面区域转码完成')
     await pollPageUntil(
       page,
       "(function(){" +
@@ -503,6 +510,7 @@ export default async function (page, data, window, event) {
 
     // 草稿 / 发布 二选一点击，不能两个都点（先点存草稿会改变页面状态，发布按钮就摸不到了）
     try {
+      setPublishStage(page, '等待百家号提交按钮可用')
       await waitForBjhActionButtonReady(page, actionText)
     } catch (waitErr) {
       const btnState = await getBjhActionButtonState(page, actionText)
@@ -516,6 +524,7 @@ export default async function (page, data, window, event) {
     }
 
     if (isOfficialSchedule) {
+      setPublishStage(page, '设置百家号官方预约并等待确认')
       await setOfficialSchedule(page, '百家号', data.publishAt)
     } else {
     // 基于操作区容器左上角的固定偏移量点击：
@@ -540,6 +549,7 @@ export default async function (page, data, window, event) {
     //   aria-label="close-circle" → 失败提示，重试
     //   10s 内不出现任何提示      → 也视为成功
     let clickSuccess = false
+    setPublishStage(page, '提交百家号发布或草稿并等待平台提示')
     for (let attempt = 1; attempt <= 10; attempt++) {
       await page.mouse.click(cx, cy, { delay: 80 })
       console.log(`[bjh] 第 ${attempt} 次点击「${actionText}」at (${Math.round(cx)}, ${Math.round(cy)})`)

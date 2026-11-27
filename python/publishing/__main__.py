@@ -32,8 +32,13 @@ def main() -> None:
     platform = sub.add_parser("platform")
     platform.add_argument("name")
     sub.add_parser("publish")
+    sub.add_parser("configure-accounts")
     args = parser.parse_args()
     try:
+        if args.command == "configure-accounts":
+            from platform_api.account_registry import save_registry
+            _dump(save_registry(json.load(sys.stdin)))
+            return
         if args.command == "groups":
             _dump(list_data_groups())
             return

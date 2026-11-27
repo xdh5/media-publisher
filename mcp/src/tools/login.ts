@@ -63,7 +63,7 @@ async function requireDataGroup(name: string): Promise<string> {
     throw new Error(
       groups.length > 0
         ? `账号组「${name}」不在 data 中。现有账号组：${groups.join("、")}`
-        : "data 目录下没有 finance、korean 或 chinese 账号组",
+        : "Publisher 尚未配置账号组",
     );
   }
   return group;

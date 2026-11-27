@@ -1,7 +1,9 @@
 import path from 'path';
 import { clickToutiaoText } from './ttText.js';
+import { uploadToutiaoImages } from './ttApiResponses.js';
 
 export async function uploadToutiaoVideoCover(page, filename) {
+  return uploadToutiaoImages(page, '头条视频封面上传', 1, async () => {
   await clickToutiaoText(page, '本地上传');
   const input = await page.waitForSelector('input[type=file][accept^="image/"]', { timeout: 15000 });
   await input.uploadFile(path.resolve(filename));
@@ -16,4 +18,5 @@ export async function uploadToutiaoVideoCover(page, filename) {
   await page.$eval(confirm, element => element.click());
   await page.waitForFunction(() => ![...document.querySelectorAll('.btn-sure')].some(element => element.getBoundingClientRect().width > 0), { timeout: 60000, polling: 250 });
   await page.waitForFunction(() => [...document.querySelectorAll('div,span,a')].some(element => element.textContent.trim() === '替换' && element.getBoundingClientRect().width > 0), { timeout: 15000, polling: 250 });
+  });
 }

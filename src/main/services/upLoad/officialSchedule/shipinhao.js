@@ -31,9 +31,8 @@ async function selectShipinhaoCalendarDay(page, publishAt) {
         return false;
       };
       const app = document.querySelector("wujie-app.wujie_iframe");
-      const root = app && app.shadowRoot;
+      const root = app?.shadowRoot || document;
       const scopes = [root, document].filter(Boolean);
-      if (!root) return { ok: false, reason: "shadow-root-missing" };
       const allNodes = scopes.flatMap((scope) => [...scope.querySelectorAll("*")]);
       const headers = allNodes
         .filter(visible)
@@ -144,8 +143,7 @@ async function selectShipinhaoCalendarDay(page, publishAt) {
 export async function setShipinhaoSchedule(page, publishAt) {
   const selected = await page.evaluate(() => {
     const app = document.querySelector("wujie-app.wujie_iframe");
-    const root = app && app.shadowRoot;
-    if (!root) return { ok: false, reason: "shadow-root-missing" };
+    const root = app?.shadowRoot || document;
     const norm = (text) => String(text || "").replace(/\s+/g, "").trim();
     const candidates = [...root.querySelectorAll("label")].filter(
       (label) => norm(label.textContent) === "定时"
@@ -176,8 +174,7 @@ export async function setShipinhaoSchedule(page, publishAt) {
 
   const state = await page.evaluate(() => {
     const app = document.querySelector("wujie-app.wujie_iframe");
-    const root = app && app.shadowRoot;
-    if (!root) return { ok: false, reason: "shadow-root-missing" };
+    const root = app?.shadowRoot || document;
     const visible = (node) => {
       const style = window.getComputedStyle(node);
       const rect = node.getBoundingClientRect();
@@ -232,7 +229,7 @@ export async function setShipinhaoSchedule(page, publishAt) {
 
   const timeFocused = await page.evaluate(() => {
     const app = document.querySelector("wujie-app.wujie_iframe");
-    const root = app && app.shadowRoot;
+    const root = app?.shadowRoot || document;
     const input = root && root.querySelector('input[placeholder="请选择时间"]');
     if (!input) return false;
     input.removeAttribute("readonly");
@@ -251,7 +248,7 @@ export async function setShipinhaoSchedule(page, publishAt) {
   await page.waitForTimeout(800);
   const actual = await page.evaluate(() => {
     const app = document.querySelector("wujie-app.wujie_iframe");
-    const root = app && app.shadowRoot;
+    const root = app?.shadowRoot || document;
     const input =
       root && root.querySelector('input[data-mm-sph-schedule="true"]');
     return String((input && input.value) || "");

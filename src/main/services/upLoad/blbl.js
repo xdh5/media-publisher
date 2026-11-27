@@ -1,3 +1,4 @@
+import { setPublishStage } from "../publishStage.js";
 import fs from 'fs';
 import path from 'path';
 import maybeClosePublishWindow from './closeWindow.js';
@@ -66,11 +67,15 @@ export default async function (page, data, window, event) {
   try {
     const options = data.publishOptions || {};
     const draft = data.publishMode === 'draft' || data.publishToDraft === true;
+    setPublishStage(page, '等待B站视频上传控件');
     const upload = await waitBilibiliElement(page, '.bcc-upload-wrapper input[type=file],.bcc-upload input[type=file]', 30000);
+    setPublishStage(page, '上传B站视频文件');
     await upload.uploadFile(path.resolve(data.filePath));
     console.log('[blbl] 开始等待视频上传完成');
+    setPublishStage(page, '等待B站视频上传完成');
     await pollPageUntil(page, () => !!document.querySelector('.file-item-content-status .success'), WAIT_UPLOAD_PROCESSING_MS, 1000, 'B站视频尚未上传完成');
 
+    setPublishStage(page, '填写B站稿件标题');
     await waitBilibiliElement(page, 'input[placeholder="请输入稿件标题"]', 30000);
     await page.$eval('input[placeholder="请输入稿件标题"]', e => e.focus());
     await page.keyboard.down('Control');
@@ -79,10 +84,13 @@ export default async function (page, data, window, event) {
     await page.keyboard.press('Backspace');
     await page.keyboard.type(data.data.bt1);
     await page.keyboard.press('Tab');
+    setPublishStage(page, '设置B站创作声明');
     await selectBlblCreativeStatement(page, data);
     console.log("[blbl] 创作声明已设置");
+    setPublishStage(page, '设置B站投稿分区');
     await selectBilibiliCategory(page, options.category);
     console.log("[blbl] 分区已设置：" + (options.category || "页面默认"));
+    setPublishStage(page, '填写B站简介和标签');
     await page.$eval('.desc-container .ql-editor', (element, text) => {
       element.focus();
       document.execCommand('selectAll');
@@ -114,6 +122,7 @@ export default async function (page, data, window, event) {
       result = await submitBilibiliVideo(page, data);
     }
     const receipt = path.join(path.dirname(path.resolve(data.filePath)), 'bilibili-publication.json');
+    setPublishStage(page, '登记B站投稿回执');
     fs.writeFileSync(receipt, JSON.stringify({ ...result, title: data.data.bt1, category: options.category || null, chapters, saved_at: new Date().toISOString() }, null, 2));
     event.reply('puppeteerFile-done', { ...data, status: true, officialScheduled: result.scheduled === true, scheduled: result.scheduled === true,
       publishMode: draft ? 'draft' : 'publish', publishToDraft: draft, message: draft ? '草稿保存成功' : 'B站投稿已核验', outcome: result, publicationReceipt: receipt });

@@ -24,24 +24,20 @@ function walkUpForMatrixRoot(start) {
   return "";
 }
 
-export const ACCOUNT_GROUPS = new Set(["finance", "korean", "chinese"]);
+/** 账号组使用通用标识，所有入口共享相同的会话目录规则。 */
+export function validAccountGroup(value) {
+  return /^[a-z][a-z0-9_]{0,63}$/.test(value);
+}
 
-/** 从命令行取出本次要使用的账号组。登录数据按 data/<账号组>/ 分开存放。 */
 export function accountGroupFromArgv(argv = process.argv) {
   const args = Array.isArray(argv) ? argv : [];
-  for (let i = 0; i < args.length; i++) {
-    const flag = args[i];
-    if (flag !== "--phone" && flag !== "--partition") continue;
-    const value = String(args[i + 1] || "").trim();
-    if (!value || value.startsWith("-")) continue;
-    if (flag === "--phone") {
-      const group = value.split("-")[0];
-      return ACCOUNT_GROUPS.has(group) ? group : "";
-    }
-    const stripped = value.replace(/^persist:/, "");
-    if (stripped.startsWith("finance")) return "finance";
-    if (stripped.startsWith("korean")) return "korean";
+  const index = args.indexOf("--phone");
+  if (index >= 0) {
+    const group = String(args[index + 1] || "").split("-")[0];
+    if (!validAccountGroup(group)) throw new Error("账号组必须是小写字母开头的字母、数字或下划线标识");
+    return group;
   }
+  if (args.includes("--partition")) throw new Error("使用 --partition 时仍须通过 --phone 指定账号组");
   return "";
 }
 

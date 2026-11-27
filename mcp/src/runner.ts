@@ -14,7 +14,7 @@ export interface CliResult {
 const VERSION_NOISE = /^\d+\.\d+\.\d+/;
 const DEVTOOLS_NOISE = /^DevTools listening/;
 const LOG_PREFIX = /^\[[^\]]+\] \[(?:LOG|INFO|WARN|ERROR|DEBUG)\] /;
-const TIMEOUT_MS = 24 * 60 * 60 * 1000;
+const TIMEOUT_MS = Number(process.env.MEDIA_PUBLISHER_TIMEOUT_SECONDS || "14520") * 1000;
 let publicationQueue: Promise<unknown> = Promise.resolve();
 
 /** 仅清理本次创建的进程树。 */
@@ -79,6 +79,13 @@ export function resolveCliSpawn(args: string[]): {
   const env: NodeJS.ProcessEnv = { ...process.env };
   env.MEDIA_PUBLISHER_PARENT_PID = String(process.pid);
 
+  const executable = process.env.MEDIA_PUBLISHER_EXECUTABLE;
+  if (executable) {
+    if (!fs.existsSync(executable)) throw new Error("配置的 Publisher 可执行文件不存在");
+    delete env.ELECTRON_RUN_AS_NODE;
+    return { command: executable, spawnArgs: ["cli", ...args], cwd: dir, env };
+  }
+
   const localElectronBin = process.platform === 'win32'
     ? path.join(dir, 'node_modules', 'electron', 'dist', 'electron.exe')
     : path.join(dir, 'node_modules', '.bin', 'electron');
@@ -86,7 +93,7 @@ export function resolveCliSpawn(args: string[]): {
   let installed = false;
   if (!localRuntimeAvailable) {
     try {
-      execSync('which media-publisher', { stdio: 'pipe' });
+      execSync(process.platform === 'win32' ? 'where.exe media-publisher' : 'which media-publisher', { stdio: 'pipe' });
       installed = true;
     } catch {
       installed = false;

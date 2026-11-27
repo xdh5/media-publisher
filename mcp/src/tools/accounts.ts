@@ -39,3 +39,22 @@ export async function handleListAccounts(args: Record<string, unknown>): Promise
   }
   return JSON.stringify(result.lastJson);
 }
+
+export const configureAccountsTool: Tool = {
+  name: "configure_accounts",
+  description: "完整保存 Publisher 本地账号目录，凭据只传引用，不传密钥正文。",
+  inputSchema: { type: "object", properties: {
+    groups: { type: "array", items: { type: "object", properties: { code: { type: "string" }, name: { type: "string" }, enabled: { type: "boolean" } }, required: ["code", "name"] } },
+    members: { type: "array", items: { type: "object", properties: {
+      group_code: { type: "string" }, platform: { type: "string" }, account_key: { type: "string" },
+      connector_account_id: { type: "string" }, platform_account_id: { type: "string" },
+      credential_ref: { type: "string" }, account_ref: { type: "string" }, display_name: { type: "string" }, enabled: { type: "boolean" },
+    }, required: ["group_code", "platform", "account_key"] } },
+  }, required: ["groups", "members"] },
+};
+
+export async function handleConfigureAccounts(args: Record<string, unknown>): Promise<string> {
+  const result = await runMatrixPublish(["configure-accounts"], { stdin: JSON.stringify(args) });
+  if (result.exitCode !== 0) throw new Error(JSON.stringify(result.lastJson) || result.stderr);
+  return JSON.stringify(result.lastJson);
+}

@@ -65,6 +65,6 @@ export async function runBilibiliCliLogin({ partition, show, timeoutMs, saveQrPn
     throw error;
   } finally {
     browser.disconnect();
-    if (!win.isDestroyed()) win.close();
+    if (!show && !win.isDestroyed()) win.close();
   }
 }

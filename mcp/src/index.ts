@@ -4,7 +4,7 @@ import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
-import { listAccountsTool, handleListAccounts } from "./tools/accounts.js";
+import { listAccountsTool, handleListAccounts, configureAccountsTool, handleConfigureAccounts } from "./tools/accounts.js";
 import { startPublishTool, pollTaskTool, handleStartPublish, handlePollTask } from "./tools/publish.js";
 import {
   loginTool,
@@ -23,6 +23,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
   return {
     tools: [
       listAccountsTool,
+      configureAccountsTool,
       loginTool,
       loginStatusTool,
       startPublishTool,
@@ -37,6 +38,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   try {
     let content: McpContent[];
     switch (name) {
+      case "configure_accounts":
+        content = [{ type: "text", text: await handleConfigureAccounts(args) }];
+        break;
       case "list_accounts":
         content = [{ type: "text", text: await handleListAccounts(args) }];
         break;

@@ -10,7 +10,6 @@ import {
   resolvePublishFile,
   guessFileNameFromUrl,
 } from "./resolvePublishFile";
-import { resolveAccountPublishMode } from "./accountPublishSettingsResolver.js";
 import { resolvePublishCompletion } from "../../shared/publishResult.js";
 import {
   parseOfficialPublishAt,
@@ -113,12 +112,7 @@ async function runSingleFilePublishInner(
   { sourceFile, resolvedFile, stem, bt1, bt2, bookName },
   options = {}
 ) {
-  // 结合「请求显式 draft」与账号「默认发布到草稿」设置，算出最终发布模式
-  const effectivePublishMode = resolveAccountPublishMode({
-    phone: derivePhoneForRecord(v),
-    pt: v.platform,
-    requestDraftMode: Boolean(v.draft),
-  });
+  const effectivePublishMode = { publishMode: v.draft ? "draft" : "publish", publishToDraft: Boolean(v.draft) };
   const officialScheduledPublish = Boolean(
     v.publishAt && supportsOfficialSchedule(v.platform)
   );

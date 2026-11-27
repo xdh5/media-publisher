@@ -79,12 +79,22 @@ export function parsePublishArgs(subArgv) {
     } else if (a === "--ai-chapters") {
       out.publishOptions.dyAiChapters = true;
       out.publishOptions.blblAiChapters = true;
+    } else if (a === "--declare-original") {
+      out.publishOptions.declareOriginal = true;
+    } else if (a === "--generate-image-text") {
+      const value = args[++i];
+      if (!["true", "false"].includes(value)) return { ok: false, error: "--generate-image-text 必须为 true 或 false" };
+      out.publishOptions.generateImageText = value === "true";
     } else if (a === "--category") {
       out.publishOptions.category = args[++i];
     } else if (a === "--widescreen-cover") {
       out.publishOptions.widescreenCoverPath = args[++i];
     } else if (a === "--cover") {
       out.publishOptions.coverPath = args[++i];
+    } else if (a === "--system-cover-index") {
+      const index = Number(args[++i]);
+      if (!Number.isInteger(index) || index < 0) return { ok: false, error: "--system-cover-index 必须为非负整数" };
+      out.publishOptions.systemCoverIndex = index;
     } else if (a === "--portrait-cover") {
       out.publishOptions.portraitCoverPath = args[++i];
     } else if (a === "--draft") {
@@ -196,10 +206,10 @@ export function parsePublishArgs(subArgv) {
   }
   // in dir mode title comes from xlsx per row, no global --title needed
 
-  const visibleDebugPlatforms = new Set(["视频号", "抖音", "哔哩哔哩"]);
+  const visibleDebugPlatforms = new Set(["视频号", "抖音", "快手", "哔哩哔哩", "头条"]);
   if (out.show && !visibleDebugPlatforms.has(out.platform)) {
     console.warn(
-      "media-publisher: 当前仅视频号、抖音和B站 CLI publish 支持显示浏览器窗口，已忽略 --show。"
+      "media-publisher: 当前仅视频号、抖音、快手、B站和头条 CLI publish 支持显示浏览器窗口，已忽略 --show。"
     );
     out.show = false;
   }
@@ -233,11 +243,6 @@ export function parsePublishArgs(subArgv) {
 
   if (out.bq) {
     const tags = String(out.bq).trim().split(/\s+/).filter(Boolean);
-    if (tags.length > 4) {
-      console.warn(
-        `media-publisher: --tags 共 ${tags.length} 个，建议最多 4 个话题；多余标签会降低每个话题的权重，生成层请按相关性裁到 4 个以内。`
-      );
-    }
     const hashtagPlatforms = new Set(["视频号", "抖音", "快手"]);
     if (hashtagPlatforms.has(out.platform)) {
       out.bq = tags
@@ -270,26 +275,25 @@ export function publishHelpText() {
   -t, --title <text>    视频标题（必填）→ data.bt1
       --name <n>        名称 / 任务记录名 → bookName；默认与视频文件名（无扩展名）一致
       --book-name <n>   同 --name
-      --bt2 <text>      可选概括短标 → data.bt2；视频号目标输入框提示 6-16 字符，代码会把
-                            ，。、/,;:!?'"()[]{}<> 等标点替换为空格；不传时保持空白。
-                            抖音/小红书也会消费 bt2（抖音拼进描述、小红书回退标题或正文），
-                            哔哩哔哩/百家号/头条/快手当前不使用。
+      --bt2 <text>      视频号概括短标题，由发布业务明确指定；不传时保持空白。
       --tags <text>     视频标签 → data.bq（同 --bq）。多个标签用【空格】分隔，例如 "减脂 健身 教程"。
-                            【上限 4 个话题】：超过 4 个会触发 warn，agent 生成时请按相关性裁到 ≤ 4。
                             • 视频号/抖音/快手：整串拼进描述末尾；未写 # 的标签会自动补上。
                             • 哔哩哔哩/小红书：按空格切分为独立标签，前导 # 会被自动剥离，可省。
                             • 百家号/头条：当前代码不消费 bq，无需填。
       --widescreen-cover <path>  B站16:9个人空间封面，--cover为4:3首页封面
       --category <分区>  B站分区；不传则保留页面默认分区
       --ai-chapters    抖音或B站智能生成章节，等待生成结果并保存
+      --declare-original 视频号声明原创，由业务请求明确指定
+      --generate-image-text <true|false> 头条生成图文选项
+      --system-cover-index <数字> 头条系统候选封面索引，从零开始
       --cover <path>   自定义封面：抖音使用4:3，快手使用3:4，头条视频使用16:9
       --portrait-cover <path>  抖音自定义竖封面，完整适配 3:4
       --publish-at <t>  一次性定时发布，格式 "YYYY-MM-DD HH:mm:ss"。抖音、快手、视频号、
                             百家号、头条和小红书会立即上传并设置平台官方定时；其他平台直接报错。
                             应用内定时队列已移除。
                             不支持每日/每周/每月循环。
-      --show            显示视频号自动化窗口；其它平台暂时忽略
-      --no-close-window 发布后不自动关窗（与视频号 --show 一起使用）
+      --show            显示视频号、抖音、快手、B站或头条自动化窗口
+      --no-close-window 发布后不自动关窗（与 --show 一起使用）
       --draft           显式发布到草稿箱（小红书点「暂存离开」）。若账号配置了「默认发布到草稿」，
                             即使不加该参数也会自动走草稿。
       --sph-product-id <id>   视频号商品上架（快捷参数，等价于 product + 商品编号）

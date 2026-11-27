@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-from .platforms import PublishError, PlatformSpec
+from .platforms import PlatformSpec, PublishError
 
 BEIJING = ZoneInfo("Asia/Shanghai")
 

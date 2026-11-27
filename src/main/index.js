@@ -77,6 +77,8 @@ if (!cliMode) {
   console.error("media-publisher 已移除图形界面，请使用 cli 子命令。");
   process.exit(1);
 } else {
+  // 无界面CLI由命令结果决定退出，关闭最后一个上传窗口时先完成回执输出。
+  if (!process.argv.includes("--show")) app.on("window-all-closed", () => {});
   configureMatrixSessionData(app);
   installMainProcessLogFile(app);
   startApplication();

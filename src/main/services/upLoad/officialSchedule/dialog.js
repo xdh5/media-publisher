@@ -1,6 +1,6 @@
 import { waitForOfficialScheduleAccepted } from "./acceptance.js";
 
-async function inspectAndOpenScheduleDialog(page, platform) {
+async function inspectAndOpenScheduleDialog(page, platform, article = false) {
   const result = await page.evaluate((platformName) => {
     const norm = (text) => String(text || "").replace(/\s+/g, "").trim();
     const visible = (node) => {
@@ -20,6 +20,7 @@ async function inspectAndOpenScheduleDialog(page, platform) {
             ".video-batch-footer .action-footer-btn",
             "button",
             "[role='button']",
+            "span",
           ]
         : ["button", "[role='button']", "div", "span"];
     const candidates = [...document.querySelectorAll(selectors.join(","))]
@@ -53,7 +54,7 @@ async function inspectAndOpenScheduleDialog(page, platform) {
   if (!result.ok) {
     throw new Error(`${platform}未找到官方「定时发布」入口：${JSON.stringify(result)}`);
   }
-  if (platform === "百家号") {
+  if (platform === "百家号" || article) {
     const box = await page.evaluate((id) => {
       const target = document.getElementById(id);
       if (!target || target.disabled) return null;
@@ -66,24 +67,31 @@ async function inspectAndOpenScheduleDialog(page, platform) {
     }
     await page.mouse.click(box.x, box.y, { delay: 80 });
   } else {
-    const clicked = await page.evaluate((id) => {
-      const target = document.getElementById(id);
+    const clicked = await page.evaluate((id, platform, article) => {
+      const target = platform === "头条" && article
+        ? [...document.querySelectorAll("button")].find(node => node.textContent.trim() === "定时发布" &&
+          !node.disabled && node.getBoundingClientRect().width > 0)
+        : document.getElementById(id);
       if (!target || target.disabled) return false;
       target.scrollIntoView({ block: "center", inline: "center" });
       target.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
       target.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
       target.click();
       return true;
-    }, result.id);
+    }, result.id, platform, article);
     if (!clicked) throw new Error(`${platform}官方定时发布按钮点击失败`);
   }
   await page.waitForTimeout(800);
   return result;
 }
 
-export async function setDialogSchedule(page, platform, publishAt) {
-  const trigger = await inspectAndOpenScheduleDialog(page, platform);
+export async function setDialogSchedule(page, platform, publishAt, article = false) {
+  if (article) await page.waitForFunction(() => [...document.querySelectorAll("button")].some(node =>
+    node.textContent.trim() === "定时发布" && !node.disabled && node.getBoundingClientRect().width > 0),
+  { timeout: 60000, polling: 250 });
+  const trigger = await inspectAndOpenScheduleDialog(page, platform, article);
   console.log(`[${platform === "头条" ? "tt" : "bjh"}] 官方定时入口:`, JSON.stringify(trigger));
+  if (article) await page.waitForSelector(".common-timing-picker", { visible: true, timeout: 60000 });
   const firstModalOpened = await page.evaluate((platformName) => {
     const visible = (node) => {
       const style = window.getComputedStyle(node);
@@ -284,24 +292,24 @@ export async function setDialogSchedule(page, platform, publishAt) {
       "分钟"
     );
     const actual = await page.$eval(
-      ".common-timing-picker .timer-time",
+      ".common-timing-picker .timer-time, .common-timing-picker .publish-time",
       (node) => String(node.textContent || "").trim()
     );
     if (actual !== publishAt.minute) {
       throw new Error(`头条定时发布时间校验失败，弹窗当前值为: ${actual || "空"}`);
     }
-    const confirmed = await page.evaluate(() => {
+    const confirmed = await page.evaluate(isArticle => {
       const norm = (text) => String(text || "").replace(/\s+/g, "").trim();
       const modal = document.querySelector(".common-timing-picker");
       const button = modal && [...modal.querySelectorAll("button")].find(
-        (node) => norm(node.textContent) === "定时发布"
+        (node) => (isArticle ? /^(预览并)?定时发布$/.test(norm(node.textContent)) : norm(node.textContent) === "定时发布")
       );
       if (!button || button.disabled) return false;
       button.click();
       return true;
-    });
+    }, article);
     if (!confirmed) throw new Error("头条官方定时发布确认按钮不可用");
-    await waitForOfficialScheduleAccepted(page, "头条", page.url());
+    if (!article) await waitForOfficialScheduleAccepted(page, "头条", page.url());
     console.log(`[tt] 已确认头条官方定时发布: ${publishAt.minute}`);
     return;
   }

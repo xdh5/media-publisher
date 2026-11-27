@@ -3,7 +3,6 @@ import fs from "fs";
 import { normalizeCreativeStatement } from "../../shared/creativeStatement.js";
 import { runPuppeteerTask } from "../services/puppeteerFile";
 import { CLI_PUBLISH_TIMEOUT_MS } from "../services/upLoad/uploadTimeouts.js";
-import { resolveAccountPublishMode } from "../services/accountPublishSettingsResolver.js";
 import { parseXlsxRows, resolveFileInDir } from "./batchPublishFiles.js";
 
 function fileStem(filePath) {
@@ -51,6 +50,10 @@ export async function runBatchDirPublish(v, cfg) {
   }
 
   const results = [];
+  if (rows.some(row => !row.title.trim())) {
+    console.error("发布请求必须为每行指定标题，不能从文件名生成标题");
+    return 2;
+  }
 
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i];
@@ -73,8 +76,8 @@ export async function runBatchDirPublish(v, cfg) {
     }
 
     const stem = fileStem(resolvedFile);
-    const bt1 = row.title && row.title.trim() ? row.title.trim() : stem;
-    const bt2 = bt1;
+    const bt1 = row.title.trim();
+    const bt2 = row.shortTitle;
     const bookName = stem;
 
     // 表格标签按逗号分隔，再按平台处理井号。
@@ -95,12 +98,7 @@ export async function runBatchDirPublish(v, cfg) {
 
     const cs = normalizeCreativeStatement(row.creativeStatement || "");
 
-    // 批量目录发布同样尊重账号「默认发布到草稿」设置 + 显式 --draft
-    const effectivePublishMode = resolveAccountPublishMode({
-      phone: derivePhoneForRecord(v),
-      pt: v.platform,
-      requestDraftMode: Boolean(v.draft),
-    });
+    const effectivePublishMode = { publishMode: v.draft ? "draft" : "publish", publishToDraft: Boolean(v.draft) };
 
     const taskId = Date.now() + Math.random();
     const taskPayload = {
@@ -112,7 +110,7 @@ export async function runBatchDirPublish(v, cfg) {
         bt1,
         bt2,
         bq,
-        bdText: "",
+        bdText: row.description,
         creativeStatement: cs,
       },
       url: cfg.upload,

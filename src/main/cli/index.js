@@ -39,11 +39,12 @@ export async function runCliMain(argv = process.argv) {
     const parsed = parseToutiaoPublishArgs(sub.slice(1), toutiaoCommands[cmd]);
     if (!parsed.ok) { console.error(parsed.error); return 2; }
     if (parsed.value.help) {
-      console.log(`用法：cli ${cmd} --phone <账号组> --file <财经生产清单.json>`);
+      console.log(`用法：cli ${cmd} --phone <账号组> --file <发布请求.json>`);
       return 0;
     }
     const result = await runSingleFilePublish(parsed.value);
-    writeCliJson(result);
+    writeCliJson({ ...result, status: result.exitCode === 0, resultStatus: result.status,
+      ...(typeof result.outcome === 'object' ? result.outcome : {}) });
     return result.exitCode;
   }
 
@@ -120,7 +121,7 @@ export async function runCliMain(argv = process.argv) {
   if (cmd === "publish") {
     if (isOfficialPlatform(officialPlatformFromArgv(sub.slice(1)))) {
       try {
-        writeCliJson(runOfficialPython(sub.slice(1)));
+        writeCliJson(runOfficialPython(sub));
         return 0;
       } catch (error) {
         console.error(error && error.message ? error.message : error);
@@ -151,53 +152,45 @@ export async function runCliMain(argv = process.argv) {
 
     const result = await runSingleFilePublish(v);
     if (result.scheduled) {
-      console.log(
-        JSON.stringify({
-          status: true,
-          scheduled: true,
-          officialScheduled: result.officialScheduled === true,
-          id: result.id,
-          publishAt: result.publishAt,
-          message: result.message,
-          ...result.outcome,
-        })
-      );
+      writeCliJson({
+        status: true,
+        scheduled: true,
+        officialScheduled: result.officialScheduled === true,
+        id: result.id,
+        publishAt: result.publishAt,
+        message: result.message,
+        ...result.outcome,
+      });
     } else if (result.exitCode === 0) {
-      console.log(
-        JSON.stringify({
-          channel: "puppeteerFile-done",
-          status: true,
-          resultStatus: result.status,
-          publishMode: result.publishMode,
-          message: result.message,
-          ...result.outcome,
-        })
-      );
+      writeCliJson({
+        channel: "puppeteerFile-done",
+        status: true,
+        resultStatus: result.status,
+        publishMode: result.publishMode,
+        message: result.message,
+        ...result.outcome,
+      });
     } else if (result.exitCode === 4) {
-      console.log(
-        JSON.stringify({
-          channel: "puppeteerFile-done",
-          status: false,
-          resultStatus: result.status,
-          publishMode: result.publishMode,
-          outcome: result.outcome,
-          needsAttention: true,
-          message: result.message,
-          ...result.outcome,
-        })
-      );
+      writeCliJson({
+        channel: "puppeteerFile-done",
+        status: false,
+        resultStatus: result.status,
+        publishMode: result.publishMode,
+        outcome: result.outcome,
+        needsAttention: true,
+        message: result.message,
+        ...result.outcome,
+      });
     } else if (result.exitCode === 3) {
-      console.log(
-        JSON.stringify({
-          channel: "puppeteerFile-done",
-          status: false,
-          resultStatus: "failed",
-          loginRequired: result.loginRequired === true,
-          realSessionProbe: result.realSessionProbe === true,
-          supportsQrLogin: result.supportsQrLogin === true,
-          message: result.message || "登录态异常或未登录",
-        })
-      );
+      writeCliJson({
+        channel: "puppeteerFile-done",
+        status: false,
+        resultStatus: "failed",
+        loginRequired: result.loginRequired === true,
+        realSessionProbe: result.realSessionProbe === true,
+        supportsQrLogin: result.supportsQrLogin === true,
+        message: result.message || "登录态异常或未登录",
+      });
       console.error(result.message || "登录态异常或未登录");
       if (v.platform === "抖音" || v.platform === "快手" || v.platform === "视频号" || v.platform === "头条") {
         const loginPlatform = { 抖音: "dy", 快手: "ks", 视频号: "sph", 头条: "tt" }[v.platform];
@@ -206,6 +199,7 @@ export async function runCliMain(argv = process.argv) {
         );
       }
     } else if (result.message) {
+      writeCliJson({ ...result, status: false, resultStatus: result.status });
       console.error(result.message);
     }
     return result.exitCode;

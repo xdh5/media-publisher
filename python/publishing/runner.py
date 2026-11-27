@@ -6,12 +6,13 @@ import json
 import os
 import re
 import shutil
+import signal
 import subprocess
 import sys
-import signal
+import tempfile
 from pathlib import Path
 
-TIMEOUT_SECONDS = 4 * 60 * 60 + 120
+TIMEOUT_SECONDS = int(os.getenv("MEDIA_PUBLISHER_TIMEOUT_SECONDS", "14520"))
 
 
 def matrix_root() -> Path:
@@ -86,10 +87,16 @@ def _last_log_json(text: str):
     return None
 
 
-def run_browser_publish(arguments: list[str]) -> dict:
+def run_browser_publish(arguments: list[str], *, log_path: Path | None = None) -> dict:
+    with tempfile.TemporaryDirectory(prefix="media-publisher-") as result_directory:
+        return _run_browser_publish(arguments, Path(result_directory) / "result.json", execution_log_path=log_path)
+
+
+def _run_browser_publish(arguments: list[str], result_path: Path, *, execution_log_path: Path | None = None) -> dict:
     prefix, cwd = electron_command()
     env = dict(os.environ)
     env.pop("ELECTRON_RUN_AS_NODE", None)
+    env["MEDIA_PUBLISHER_RESULT_PATH"] = str(result_path)
     env["MEDIA_PUBLISHER_PARENT_PID"] = env.get("MEDIA_PUBLISHER_OWNER_PID") or str(os.getpid())
     log_path = _latest_log()
     log_offset = log_path.stat().st_size if log_path else 0
@@ -118,7 +125,10 @@ def run_browser_publish(arguments: list[str]) -> dict:
         result = subprocess.CompletedProcess(process.args, process.returncode, stdout, stderr)
     except (OSError, subprocess.SubprocessError) as exc:
         raise RuntimeError(f"运行 media-publisher CLI 失败：{exc}") from exc
-    payload = _last_json(result.stdout) or _last_json(result.stderr)
+    if execution_log_path is not None:
+        execution_log_path.write_text(result.stdout + "\n" + result.stderr, encoding="utf-8")
+    payload = (json.loads(result_path.read_text(encoding="utf-8")) if result_path.is_file()
+               else _last_json(result.stdout) or _last_json(result.stderr))
     latest = _latest_log()
     if payload is None and latest:
         try:

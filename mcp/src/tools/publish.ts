@@ -5,7 +5,21 @@ import { submitTask, pollTask } from "../tasks.js";
 const publishItemSchema = {
   type: "object",
   properties: {
-    account_key: { type: "string", description: "同平台有多个账号时指定数据库账号标识" },
+    content_type: { type: "string", enum: ["video", "article", "micro"], description: "内容类型，默认 video；文章无封面，微头条只接受一张图片" },
+    request_path: { type: "string", description: "文章或微头条的独立发布请求 JSON 绝对路径" },
+    thumbnail_path: { type: "string" },
+    portrait_thumbnail_path: { type: "string" },
+    widescreen_thumbnail_path: { type: "string" },
+    ai_chapters: { type: "boolean" },
+    declare_original: { type: "boolean" },
+    generate_image_text: { type: "boolean" },
+    system_cover_index: { type: "integer", minimum: 0 },
+    category: { type: "string" },
+    youtube_options: { type: "object", properties: {
+      privacy_status: { type: "string", enum: ["private", "unlisted", "public"] },
+      category_id: { type: "string" }, language: { type: "string" }, made_for_kids: { type: "boolean" },
+    }, required: ["privacy_status", "category_id", "language", "made_for_kids"] },
+    account_key: { type: "string", description: "同平台有多个账号时指定 Publisher 账号标识" },
     file: { type: "string", description: "本地视频绝对路径。浏览器平台和 YouTube 必填" },
     video_url: { type: "string", description: "公网视频地址。TikTok、Instagram、Facebook 必填" },
     title: { type: "string", description: "视频标题" },
@@ -13,7 +27,7 @@ const publishItemSchema = {
     tags: { type: "string", description: "标签。抖音、快手、视频号会自动补 #" },
     bt2: { type: "string", description: "短标题。视频号填写时须为 6～16 字" },
     publication_id: { type: "string", description: "YouTube 去重用的产物标识，可选" },
-    creative_statement: { type: "string", description: "创作声明。浏览器平台默认 ai_generated" },
+    creative_statement: { type: "string", description: "创作声明。未指定时不声明" },
     draft: { type: "boolean", description: "浏览器平台保存草稿。不能和预约同时使用" },
     sph_product_id: { type: "string", description: "仅视频号商品编号" },
   },
@@ -24,7 +38,7 @@ export const startPublishTool: Tool = {
   name: "start_publish",
   description:
     "按一个 data 账号组，把多条视频一次发到多个平台，并立即返回任务路径。" +
-    "实际发布调用矩媒 publishing，与 media-factory 发布 MCP 使用同一套平台参数和预约规则。" +
+    "独立调用 Publisher 的发布执行器，支持视频、头条文章和微头条。" +
     "立即发布用 publish_at=now；预约用带时区的 ISO 8601。各平台时间不同时传 publish_at_by_platform。" +
     "完成后用 poll_task 读取同一 task_path。",
   inputSchema: {
@@ -32,7 +46,7 @@ export const startPublishTool: Tool = {
     properties: {
       account_group: {
         type: "string",
-        description: "数据库或本地配置中的账号组",
+        description: "Publisher 本地配置中的账号组",
       },
       platforms: {
         type: "array",

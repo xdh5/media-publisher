@@ -1,43 +1,45 @@
-"""账号路由来自数据库；凭据按引用读取，使用上下文隔离并行账号。"""
+"""账号路由来自 Publisher 本地目录；凭据按引用读取，使用上下文隔离并行账号。"""
 
-from contextlib import contextmanager
-from contextvars import ContextVar
 import json
 import os
-from pathlib import Path
 import re
-
-import requests
+from contextlib import contextmanager
+from contextvars import ContextVar
+from pathlib import Path
 
 _current = ContextVar("publishing_account_env", default=None)
 DATA_ROOT = Path(os.getenv("MEDIA_PUBLISHER_DIR", Path.cwd())) / "data"
 
 
 def registry() -> dict:
-    url = os.getenv("CLOUDFLARE_DATA_API_URL", "").strip()
-    token = os.getenv("CLOUDFLARE_DATA_API_TOKEN", "").strip()
-    if url and token:
-        response = requests.get(
-            f"{url.rstrip('/')}/v1/publishing-account-groups",
-            headers={"Authorization": f"Bearer {token}"}, timeout=30,
-        )
-        response.raise_for_status()
-        return response.json()
     path = DATA_ROOT / "accounts.json"
     return json.loads(path.read_text(encoding="utf-8")) if path.is_file() else {"groups": [], "members": []}
+
+
+def save_registry(value: dict, directory: Path | None = None) -> dict:
+    """保存 Publisher 自有账号目录，不接受凭据正文。"""
+    groups = value["groups"]
+    members = value["members"]
+    if not isinstance(groups, list) or not isinstance(members, list):
+        raise ValueError("groups 和 members 必须是数组")
+    groups = [{key: row[key] for key in ("code", "name", "enabled") if key in row} for row in groups]
+    fields = ("group_code", "platform", "account_key", "connector", "connector_account_id", "platform_account_id", "credential_ref", "account_ref", "display_name", "enabled")
+    members = [{key: row[key] for key in fields if key in row} for row in members]
+    names = [str(row["name"]) for row in groups]
+    if any(not re.fullmatch(r"[a-z][a-z0-9_]{0,63}", name) for name in names) or len(set(names)) != len(names):
+        raise ValueError("账号组标识无效或重复")
+    root = directory or DATA_ROOT
+    root.mkdir(parents=True, exist_ok=True)
+    path = root / "accounts.json"
+    temporary = path.with_suffix(".json.tmp")
+    temporary.write_text(json.dumps({"groups": groups, "members": members}, ensure_ascii=False, indent=2), encoding="utf-8")
+    temporary.replace(path)
+    return {"groups": len(groups), "members": len(members)}
 
 
 def credential(ref: str) -> dict:
     raw = os.getenv("PUBLISHING_CREDENTIALS_JSON", "").strip()
     path = Path(os.getenv("PUBLISHING_CREDENTIALS_FILE", "") or DATA_ROOT / "credentials.json")
-    # 容器挂载同一工作区时，将宿主 Windows 凭据路径映射到子仓库的数据目录。
-    configured = str(path).replace("\\", "/")
-    marker = "/integrations/media-publisher/data/"
-    if Path("/.dockerenv").exists() and re.match(r"^[A-Za-z]:/", configured) and marker in configured:
-        mapped = (DATA_ROOT / configured.split(marker, 1)[1]).resolve()
-        if not mapped.is_relative_to(DATA_ROOT.resolve()):
-            raise ValueError("发布凭据路径超出数据目录")
-        path = mapped
     values = json.loads(raw) if raw else (json.loads(path.read_text(encoding="utf-8")) if path.is_file() else {})
     selected = values.get(ref)
     if not isinstance(selected, dict):
@@ -97,9 +99,10 @@ def verify_account(row: dict) -> dict:
         found = [item for item in _accounts(key, platform=row["platform"])
                  if item["account_id"] == row["connector_account_id"]]
         if row["platform"] == "youtube":
-            from googleapiclient.discovery import build
             from google_auth_httplib2 import AuthorizedHttp
-            from .youtube.publish_to_youtube import _load_credentials, YouTubeHttp
+            from googleapiclient.discovery import build
+
+            from .youtube.publish_to_youtube import YouTubeHttp, _load_credentials
             transport = YouTubeHttp()
             try:
                 service = build("youtube", "v3", http=AuthorizedHttp(_load_credentials(row["connector_account_id"], key), http=transport), cache_discovery=False)

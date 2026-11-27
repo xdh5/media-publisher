@@ -1,3 +1,4 @@
+import { setPublishStage } from "../publishStage.js";
 import path from "path";
 import { resolveXhsCreativeStatementLabel } from "../../../shared/creativeStatement.js";
 import maybeClosePublishWindow from "./closeWindow.js";
@@ -29,11 +30,14 @@ async function fillMetadata(page, metadata) {
   const title = await page.waitForSelector(TITLE_INPUT, { visible: true, timeout: FORM_TIMEOUT_MS });
   await title.click({ clickCount: 3 });
   await page.keyboard.press("Backspace");
-  await page.keyboard.type(Array.from((metadata.bt1 || metadata.bt2 || "").trim()).slice(0, 20).join(""));
+  const suppliedTitle = (metadata.bt1 || "").trim();
+  if (Array.from(suppliedTitle).length > 20) throw new Error("小红书标题超过20字，请由发布业务指定标题");
+  await page.keyboard.type(suppliedTitle);
 
-  const description = (metadata.bdText || metadata.bt2 || "").trim();
+  const description = (metadata.bdText || "").trim();
   const tags = (metadata.bq || "").trim().split(/\s+/)
-    .map((tag) => tag.replace(/^#+/, "")).filter(Boolean).slice(0, 10);
+    .map((tag) => tag.replace(/^#+/, "")).filter(Boolean);
+  if (tags.length > 10) throw new Error("小红书话题超过10个，请由发布业务指定话题");
   if (!description && !tags.length) return;
 
   const editor = await page.waitForSelector(DESCRIPTION_INPUT, { visible: true, timeout: FORM_TIMEOUT_MS });
@@ -84,6 +88,7 @@ async function applyCreativeStatement(page, value) {
 
 // 定时表单参考 social-auto-upload 3847fff，许可证见项目根目录。
 async function setXiaohongshuSchedule(page, publishAt) {
+  setPublishStage(page, "设置并核对小红书官方预约时间");
   const toggle = await page.waitForXPath(
     '//div[contains(concat(" ", normalize-space(@class), " "), " custom-switch-card ")][contains(., "定时发布")]//*[contains(concat(" ", normalize-space(@class), " "), " d-switch ")]',
     { visible: true, timeout: FORM_TIMEOUT_MS },
@@ -158,12 +163,16 @@ export default async function publishXiaohongshuVideo(page, data, window, event)
   let submitting = false;
   try {
     const beforeUpload = await page.evaluate(inspectSubmissionPage, "check");
+    setPublishStage(page, "检查小红书发布限制和上传控件");
     if (beforeUpload?.blocked) throw new Error(`小红书上传已暂停：${beforeUpload.blocked}`);
     const input = await page.waitForSelector(XIAOHONGSHU_VIDEO_INPUT, { timeout: FORM_TIMEOUT_MS });
+    setPublishStage(page, "上传小红书视频文件");
     await input.uploadFile(path.resolve(data.filePath));
 
     // 预览出现后继续填写，提交前等待平台报告上传完成。
+    setPublishStage(page, "填写小红书标题、简介和话题");
     await fillMetadata(page, data.data);
+    setPublishStage(page, "等待小红书确认视频上传成功");
     await pollPageUntil(page, () => {
       return Array.from(document.querySelectorAll(".preview-new, .video-plugin-title-action"))
         .some((element) => /上传成功|重新上传/.test(element.innerText));
@@ -171,16 +180,20 @@ export default async function publishXiaohongshuVideo(page, data, window, event)
 
     const pkCover = await page.$(".pk-cover-title-wrapper input:checked");
     if (pkCover) await pkCover.click();
+    setPublishStage(page, "设置小红书创作声明");
     await applyCreativeStatement(page, data.data.creativeStatement);
 
     await page.waitForSelector("xhs-publish-btn, .publish-page-publish-btn", {
       visible: true, timeout: FORM_TIMEOUT_MS,
     });
     if (scheduled) await setXiaohongshuSchedule(page, data.publishAt);
+    setPublishStage(page, "核验小红书提交前页面状态");
     const before = await page.evaluate(inspectSubmissionPage, "check");
     if (before?.blocked) throw new Error(`小红书发布已暂停：${before.blocked}`);
     submitting = true;
+    setPublishStage(page, `提交小红书${label}`);
     await clickSubmit(page, label);
+    setPublishStage(page, "等待小红书发布或草稿回执");
     const receipt = await page.waitForFunction(inspectSubmissionPage, {
       timeout: FORM_TIMEOUT_MS, polling: 250,
     }, draft ? "draft" : "publish").catch((error) => {

@@ -29,6 +29,8 @@ export function parseXlsxRows(xlsxPath) {
           map["标题"] != null ? map["标题"] : map["title"] || ""
         ),
         tags: cleanCell(map["标签"] != null ? map["标签"] : map["tags"] || ""),
+        description: cleanCell(map["描述"] != null ? map["描述"] : map["description"] || ""),
+        shortTitle: cleanCell(map["短标题"] != null ? map["短标题"] : map["short_title"] || ""),
         creativeStatement: cleanCell(
           map["创作声明"] != null
             ? map["创作声明"]

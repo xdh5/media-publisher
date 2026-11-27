@@ -170,6 +170,10 @@ export async function runSphCliLogin({
   }
 
   const part = normalizeSphPartition(partition);
+  if (force) {
+    await electronSession.fromPartition(part).clearStorageData({ storages: ["cookies", "localstorage"] });
+    console.log("[sph-cli-login] 已清除本次视频号分区登录状态");
+  }
   console.log(
     "[sph-cli-login] 原始 partition:",
     partition,
@@ -185,7 +189,6 @@ export async function runSphCliLogin({
   }
 
   // 记住旧 sessionid，检测到新值后再验证真实发布页。
-  // 不清除 cookie，避免破坏 login-for-iframe 页面加载
   const oldSessionId = await getSphSessionId(part);
   if (oldSessionId) {
     console.log("[sph-cli-login] 检测到旧 sessionid，将等待新的登录会话");

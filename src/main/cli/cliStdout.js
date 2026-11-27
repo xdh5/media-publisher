@@ -31,5 +31,8 @@ export function writeCliStdout(text) {
 }
 
 export function writeCliJson(value) {
+  if (process.env.MEDIA_PUBLISHER_RESULT_PATH) {
+    fs.writeFileSync(process.env.MEDIA_PUBLISHER_RESULT_PATH, JSON.stringify(value), "utf8");
+  }
   writeCliStdout(JSON.stringify(value));
 }

@@ -8,7 +8,6 @@ from pathlib import Path
 from .platforms import PublishError, resolve_platform
 from .runner import matrix_root
 
-ACCOUNT_GROUPS = ("finance", "korean", "chinese")
 _OFFICIAL_ENV_SUFFIXES = (
     "_YOUTUBE_CHANNEL_ID",
     "_TIKTOK_ACCOUNT_ID",
@@ -23,18 +22,15 @@ def data_root() -> Path:
 
 def list_data_groups() -> list[str]:
     from platform_api.account_registry import registry
-    configured = [str(row["name"]) for row in registry()["groups"]]
+    configured = [str(row["name"]) for row in registry()["groups"] if row.get("enabled", True)]
     root = data_root()
     if not root.is_dir():
         return configured
-    return sorted(set(configured + [item.name for item in root.iterdir() if item.is_dir() and not item.name.startswith(".")]))
+    return sorted(set(configured + [item.name for item in root.iterdir() if item.is_dir() and ((item / "Partitions").is_dir() or (item / ".env").is_file())]))
 
 
 def _official_env_ready(group: str) -> bool:
-    """GitHub Runner 不检出 data/。chinese 仍使用 LANGUAGE_LEARNING_ 环境变量。"""
-    from platform_api.cli import _apply_legacy_env
-
-    _apply_legacy_env(group)
+    """检查显式传入的账号组凭据环境变量。"""
     for key, value in os.environ.items():
         if not str(value or "").strip():
             continue
@@ -49,6 +45,9 @@ def require_group(name: str) -> str:
     import re
     if not re.fullmatch(r"[a-z][a-z0-9_]{0,63}", group):
         raise PublishError(f"账号组「{name}」标识无效")
+    from platform_api.account_registry import registry
+    if any(row["name"] == group and not row.get("enabled", True) for row in registry()["groups"]):
+        raise PublishError(f"账号组「{group}」已停用")
     if group in list_data_groups():
         return group
     if (data_root() / group).is_dir() or _official_env_ready(group):
@@ -56,7 +55,7 @@ def require_group(name: str) -> str:
     groups = list_data_groups()
     if groups:
         raise PublishError(f"账号组「{name}」不在 data 中。现有账号组：{'、'.join(groups)}")
-    raise PublishError("data 目录下没有 finance、korean 或 chinese 账号组，环境变量里也没有对应的官方账号")
+    raise PublishError("未配置账号组或对应的官方账号")
 
 
 def _browser_accounts(group: str) -> list[dict]:
@@ -96,11 +95,13 @@ def _browser_accounts(group: str) -> list[dict]:
     return accounts
 
 
-def _official_accounts(group: str) -> tuple[list[dict], str]:
+def _official_accounts(group: str, platforms: set[str] | None = None) -> tuple[list[dict], str]:
     from platform_api.account_registry import registry, verify_account
     data = registry()
-    codes = {row["code"] for row in data["groups"] if row["name"] == group}
-    members = [row for row in data["members"] if row["group_code"] in codes and row.get("account_key")]
+    codes = {row["code"] for row in data["groups"] if row["name"] == group and row.get("enabled", True)}
+    members = [row for row in data["members"] if row["group_code"] in codes and row.get("account_key") and row.get("enabled", True)
+               and resolve_platform(row["platform"]).connector == "official"
+               and (platforms is None or row["platform"] in platforms)]
     if members:
         accounts = []
         for row in members:
@@ -112,8 +113,13 @@ def _official_accounts(group: str) -> tuple[list[dict], str]:
         return accounts, ""
     try:
         from platform_api.cli import _accounts as list_official_rows
-
-        rows = list_official_rows(group)
+        from platform_api.group_env import load_matrix_group_envs
+        load_matrix_group_envs()
+        rows = []
+        for suffix in _OFFICIAL_ENV_SUFFIXES:
+            platform = suffix[1:].split("_ACCOUNT_ID")[0].split("_CHANNEL_ID")[0].lower()
+            if (platforms is None or platform in platforms) and os.getenv(group.upper() + suffix, "").strip():
+                rows.extend(list_official_rows(group, platform=platform))
     except Exception as exc:
         return [], str(exc)
     accounts = []
@@ -141,12 +147,12 @@ def _official_accounts(group: str) -> tuple[list[dict], str]:
     return accounts, ""
 
 
-def list_account_groups(account_group: str | None = None, platform: str | None = None) -> list[dict]:
+def list_account_groups(account_group: str | None = None, platform: str | None = None, *, selected_platforms: set[str] | None = None) -> list[dict]:
     groups = [require_group(account_group)] if account_group else list_data_groups()
     wanted = resolve_platform(platform).code if platform else ""
     snapshots = []
     for group in groups:
-        official, error = _official_accounts(group)
+        official, error = _official_accounts(group, selected_platforms or ({wanted} if wanted else None))
         accounts = [
             item for item in [*_browser_accounts(group), *official]
             if not wanted or item["platform"] == wanted
@@ -161,7 +167,7 @@ def list_account_groups(account_group: str | None = None, platform: str | None =
 
 
 def resolve_group_accounts(account_group: str, platforms: list) -> dict[str, dict]:
-    snapshots = list_account_groups(account_group)
+    snapshots = list_account_groups(account_group, selected_platforms={spec.code for spec in platforms})
     snapshot = snapshots[0]
     routes = {}
     for spec in platforms:

@@ -1,4 +1,4 @@
-"""为 media-factory 的单个 YouTube 频道生成长期 OAuth 凭据。"""
+"""为独立 Publisher 的 YouTube 频道生成 OAuth 凭据。"""
 
 from __future__ import annotations
 

@@ -1,159 +1,286 @@
-## 命令行（CLI）说明
+# media-publisher
 
-命令行是唯一入口。参数中出现 `cli` 即进入命令行模式。
+独立的发布 CLI 和 MCP，支持账号管理、登录、视频、头条文章和微头条发布。
 
-> 返回 [README](../README.md) · 相关：[MCP](./mcp.md)
+## 安装
 
-## 故障排除
+Node.js 20、Python 3.10 以上。在 Publisher 根目录执行：
 
-若启动时报 `require('electron') 异常` 且类型为 `string`，多半是环境变量 **`ELECTRON_RUN_AS_NODE`** 被设为 `1`。在该模式下 Electron 以纯 Node 运行，`require('electron')` 只会得到可执行文件路径。请在本终端执行 `unset ELECTRON_RUN_AS_NODE`，或在命令前显式清空后再启动，例如：
-
-```bash
-ELECTRON_RUN_AS_NODE= electron . cli publish --help
+```powershell
+npm install
+npm run build:dir
+python -m pip install ./python
 ```
 
-`yarn dev` 已尝试在子进程中清除该变量；若仍异常，请检查 shell 配置（如 `.zshrc`）是否全局导出了 `ELECTRON_RUN_AS_NODE`。
+下文 `media-publisher` 可替换为 `npx electron .`。Python 命令在 Publisher 根目录运行，或设置 `MEDIA_PUBLISHER_DIR`。
 
-## CLI 登录
+## 平台码
 
-当前支持**抖音**和**视频号**两个平台。
+| 平台 | 平台码 |
+| --- | --- |
+| 抖音 | dy / douyin |
+| 快手 | ks / kuaishou |
+| 视频号 | sph / wechat_channels |
+| B站 | blbl / bilibili |
+| 头条 | tt / toutiao |
+| 百家号 | bjh / baijiahao |
+| 小红书 | xhs / xiaohongshu |
+| YouTube | youtube / yt / ytb |
+| TikTok | tiktok / tk |
+| Instagram | instagram / ig / ins |
+| Facebook | facebook / fb |
 
-### 通用机制
+## 账号
 
-1. **会话**：`partition` 形如 `persist:<手机号段><平台名>`，与账号树、webview 一致。
-2. **Cookie 持久化**：登录成功后自动 `cookies.flushStore()` + `flushStorageData()`，Cookie 写在 media-publisher 目录的 `data` 下。
-3. **终端扫码**：CLI 自动捕获二维码并在终端展示，用户扫码后继续轮询登录 Cookie。
-4. **退出**：检测到 Cookie 后关窗；超时 / 用户关窗返回码 3。
+账号组使用小写字母开头的字母、数字或下划线，最长64位。
 
-### 抖音 CLI 登录
+| 文件 | 内容 |
+| --- | --- |
+| data/accounts.json | 账号组、账号和凭据引用 |
+| data/credentials.json | 官方接口凭据 |
+| data/账号组/Partitions/ | 浏览器会话 |
+| data/账号组/.env | 官方登录写入的凭据 |
 
-- **登录判定**：轮询 `https://creator.douyin.com` 下 Cookie `passport_assist_user`。
-- **窗口模式**：默认屏外隐藏窗口 + 终端二维码；支持 `--puppeteer-headless` 无头模式。
-- `--show` 会被忽略（不弹窗）。
+accounts.json 示例：
 
-```bash
-electron . cli login -p dy --phone 13800138000
+```json
+{
+  "groups": [{"code":"demo","name":"demo"}],
+  "members": [{
+    "group_code":"demo", "platform":"youtube", "account_key":"demo_youtube",
+    "connector_account_id":"频道ID", "platform_account_id":"频道ID",
+    "credential_ref":"google", "enabled":true
+  }]
+}
 ```
 
-### 视频号 CLI 登录
+浏览器账号的 members 可为空。credentials.json 示例：
 
-- **登录判定**：轮询 `https://channels.weixin.qq.com` 下 Cookie `sessionid`，检测与旧值不同的新 sessionid 即为登录成功（支持重复登录）。
-- **窗口模式**：默认透明窗口（`opacity: 0`）+ 终端二维码；支持 `--show` 弹出可见登录窗口。
-- **UA 注入**：通过 puppeteer CDP `page.setUserAgent()` 在导航前设置微信 UA，覆盖主 frame + iframe 所有请求。
-- **QR 提取**：遍历所有 frame（含 wujie micro-frontend 的 `login-for-iframe`），从 `img.qrcode` 的 `data:` URL 直接解码。
-- 不支持 `--puppeteer-headless`。
-
-```bash
-# 终端二维码（默认，无弹窗）
-electron . cli login -p sph --phone 13800138000
-
-# 弹出登录窗口
-electron . cli login -p sph --phone 宠物 --show
+```json
+{
+  "google":{"client_id":"客户端ID","client_secret":"客户端密钥","refresh_token":"刷新令牌"},
+  "social":{"api_key":"Zernio密钥"}
+}
 ```
 
-### Linux / SSH 环境
-
-无显示器或 SSH 环境下请用 `xvfb-run -a` 提供虚拟显示：
-
-```bash
-xvfb-run -a ./矩媒.AppImage cli login -p dy --phone 13800138000
+```powershell
+Get-Content -Raw -Encoding utf8 ./accounts.json | python -m publishing configure-accounts
+python -m publishing groups
+python -m publishing accounts --group demo --platform youtube
+python -m publishing platform douyin
 ```
 
-若 stdout 不是 TTY（如管道重定向），终端截图可能无法正常展示，请在可交互终端中执行。参数见 `cli login --help`。成功后再执行 `cli publish`。
+configure-accounts 完整替换账号目录。
 
-## 发布视频
+## 登录与预检
 
-```bash
-# 开发（项目根目录，需已执行 yarn build:dir）
-electron . cli publish -p dy --phone 13800138000 -f /path/to/video.mp4 -t "标题"
+```powershell
+media-publisher cli login -p dy --phone demo --save-qr-png ./login.png
+media-publisher cli login -p youtube --phone demo --client-secret ./client_secret.json
+media-publisher cli accounts --phone demo --platforms dy,ks,sph --json
+media-publisher cli accounts --phone demo --official --json
 ```
 
-### 参数摘要
+| 参数 | 说明 |
+| --- | --- |
+| -p、--platform | 平台码，浏览器扫码支持 dy、sph、ks、tt、xhs、blbl |
+| --phone | 账号组 |
+| --partition | 完整浏览器分区，仍须提供账号组 |
+| --show、--hide | 请求显示或隐藏窗口，实际行为由平台决定 |
+| --no-terminal-qr | 不向终端输出二维码 |
+| --save-qr-png 路径 | 保存二维码图片 |
+| --timeout-sec 秒数 | 登录等待上限，默认900秒 |
+| --force | 刷新旧登录会话 |
+| --puppeteer-headless | 抖音使用系统 Chrome/Chromium 无头登录 |
+| --client-secret 文件 | Google OAuth 客户端 JSON |
+| --api-key 密钥 | Zernio API Key |
+| --profile ID | Zernio 资料 ID |
+| -h、--help | 帮助 |
 
-与发布载荷同一套字段：
+accounts 参数：`--phone`、`-p/--platform`、`--platforms`（逗号分隔）、`--official`、`--logged-in`、`--logged-out`、`--json`、`-h/--help`。platforms 与 platform、official 互斥；logged-in 与 logged-out 互斥。
 
-| 参数                      | 载荷字段                                                                   |
-| ------------------------- | -------------------------------------------------------------------------- |
-| `-p` / `--platform`       | 发布平台                                                                   |
-| `-f` / `--file`           | 本地视频路径 → `filePath`、`data.textOtherName`（文件名无扩展名）          |
-| `--phone` / `--partition` | 会话分区，与账号树一致                                                     |
-| `-t` / `--title`          | **视频标题**（必填）→ `data.bt1`                                           |
-| `--name` / `--book-name`  | **名称**（任务记录名）→ `bookName`；省略时默认与视频文件名（无扩展名）一致 |
-| `--bt2`                   | **概括短标题** → `data.bt2`；省略时默认与视频标题一致（视频号等场景）      |
-| `--tags` / `--bq`         | **视频标签** → `data.bq`                                                   |
-| `--address`               | **地址** → `data.address`（仅百家号）                                      |
-| `--publish-at`            | 一次性定时发布，格式 `YYYY-MM-DD HH:mm:ss`；抖音、快手、视频号、百家号、头条和小红书使用平台官方定时 |
-| `--show`                  | 当前 CLI 会忽略，仍后台运行                                                |
-| `--no-close-window`       | 发布后不自动关窗                                                           |
-| `--draft`                 | 保存到平台草稿箱，不直接发布                                               |
-| `--sph-product-id`        | 视频号商品上架快捷参数（商品编号）；其他平台忽略                           |
-| `--sph-link-type`         | 视频号链接类型，当前支持 `none` / `product`；其他平台忽略                  |
-| `--sph-link-value`        | 视频号商品编号；可单独传（默认按商品上架）                                 |
+## 浏览器视频
 
-完整说明请执行：
-
-```bash
-<应用> cli publish --help
+```powershell
+media-publisher cli publish -p dy --phone demo --file D:/video.mp4 --title "标题" --tags "成长 职场" --ai-chapters
+media-publisher cli publish -p blbl --phone demo --file D:/video.mp4 --title "标题" --category "知识" --cover D:/cover.png
 ```
 
-### 退出码
+| 参数 | 说明及默认行为 |
+| --- | --- |
+| -p、--platform | 平台，必填 |
+| --phone | 账号组，必填 |
+| --partition | 完整分区，例如 persist:demo抖音 |
+| -f、--file | 本地视频或 HTTP(S) 视频 URL，远程文件先下载，任务结束清理临时文件 |
+| -t、--title | 单文件标题，必填 |
+| --description、--desc | 描述 |
+| --tags、--bq | 空格分隔标签；抖音、快手、视频号补 #，B站、小红书按独立标签处理 |
+| --bt2 | 视频号短标题，建议6–16字，不传为空 |
+| --name、--book-name | 任务名称，默认取文件名 |
+| --creative-statement、--cs | 创作声明，默认 none |
+| --cover 路径 | 自定义封面；抖音和B站首页4:3、快手3:4、头条视频16:9、视频号分享卡片4:3 |
+| --portrait-cover 路径 | 抖音或视频号3:4封面 |
+| --widescreen-cover 路径 | B站16:9个人空间封面 |
+| --category 分区 | B站分区，不传保留页面默认值 |
+| --ai-chapters | 抖音、B站智能章节，不传不主动启用 |
+| --declare-original | 视频号原创声明，不传不主动勾选 |
+| --generate-image-text true/false | 头条生成图文，不传不主动修改页面状态 |
+| --system-cover-index 整数 | 头条系统候选封面索引，从0开始 |
+| --publish-at 时间 | 北京时间，格式 YYYY-MM-DD HH:mm:ss；不传立即发布 |
+| --draft | 保存草稿，与预约互斥 |
+| --show | 显示抖音、快手、视频号、B站或头条执行窗口，完成后保留现场 |
+| --no-close-window | 发布结束不自动关窗 |
+| --sph-product-id 编号 | 视频号挂载商品 |
+| --sph-link-type none/product | 视频号链接类型 |
+| --sph-link-value 编号 | 视频号商品编号，单独传入时按商品处理 |
+| --dir 目录、--config/--xlsx XLSX | 目录批量模式，须配对，不能同时传 file |
+| -h、--help | 帮助 |
 
-| 码  | 含义                                           |
-| --- | ---------------------------------------------- |
-| 0   | 成功                                           |
-| 1   | 未捕获异常                                     |
-| 2   | 参数错误                                       |
-| 3   | 任务失败（如未登录、上传失败）                 |
-| 4   | 视频号链接添加失败，视频已转存草稿，需人工检查 |
+创作声明：none、ai_generated、fiction、marketing、personal_opinion、repost、self_made_no_repost（仅B站）。
 
-视频号商品上架并保存草稿：
+XLSX 首个工作表列为：文件名、标题、标签、描述、短标题、创作声明。文件名和标题必填，标签用逗号分隔。
 
-```bash
-electron . cli publish -p sph --phone 13800138000 -f /path/to/video.mp4 \
-  -t "视频标题" --bt2 "视频号短标题" --draft \
-  --sph-product-id 10000591263144
+## 官方平台视频
+
+```powershell
+media-publisher cli publish -p youtube --phone demo --account-id demo_youtube --file D:/video.mp4 --title "标题" --privacy public
+media-publisher cli publish -p tiktok --phone demo --account-id <账号ID> --video-url https://example.com/video.mp4 --description "描述"
 ```
 
-视频号链接参数属于视频号专属能力。即使误传给抖音、B 站等其他平台，也会被忽略，不会阻断任务。
+| 参数 | 说明 |
+| --- | --- |
+| -p、--platform | 官方平台，必填 |
+| --phone | 账号组，必填 |
+| --account-id | connector_account_id 或配置中的 account_key，必填 |
+| -f、--file | YouTube 本地视频 |
+| --video-url | TikTok、Instagram、Facebook 可下载的公网视频地址 |
+| --title、--description | 标题和描述 |
+| --privacy | YouTube private、unlisted、public，CLI默认 public |
+| --category-id | YouTube 分类 ID，默认24 |
+| --language | YouTube 语言，默认 zh |
+| --made-for-kids | YouTube 儿童内容声明，不传为 false |
+| --thumbnail-path | YouTube 封面文件 |
+| --publication-id | YouTube 去重标识，与文件内容共同识别上传 |
+| --publish-at | 带时区的未来 ISO 8601，例如 2030-01-10T18:00:00+08:00 |
+| -h、--help | 帮助 |
 
-### 注意事项
+YouTube 使用 Google API，TikTok、Instagram、Facebook 使用 Zernio。也可用 `python -m platform_api.cli publish`；查询官方账号用 `python -m platform_api.cli accounts --group demo`。
 
-登录与发布使用同一账号组下的持久化分区，浏览器运行目录位于 `data/<账号组>/runtime`。同账号组的命令独占配置目录，等待超过一分钟会返回占用原因。MCP 退出后，其启动的浏览器会自动退出；发布外层超时会清理本次进程树。
+## 头条
 
-抖音、快手扫码后必须通过真实发布页验证并保存会话才返回成功。账号列表中的 Cookie 检查仅为本地预检；只有明确跳转登录地址或出现可见登录界面才要求重新扫码，未出现上传控件属于页面异常。
+```powershell
+media-publisher cli publish-toutiao-video --phone demo --file D:/video-request.json
+media-publisher cli publish-toutiao-article --phone demo --file D:/article-request.json
+media-publisher cli publish-toutiao-micro --phone demo --file D:/micro-request.json
+```
 
-发布页面每五秒采集页面状态与上传进度，连续五分钟无变化会终止本次任务并释放浏览器。上传进度变化时继续等待；超时结果需要先在平台作品管理核对，不能直接认定未发布或自动重发。
+请求公共字段：
 
-1. **登录态**：Cookie 保存在 media-publisher 目录的 `data` 中。抖音、快手、头条和视频号使用 `cli login` 扫码登录。
-2. **进程生命周期**：命令会启动 Electron 主进程，不打开图形界面。命令完成、参数失败或业务失败后会主动退出；执行发布期间进程存在属于正常现象。
-3. **启动诊断**：终端会依次输出 Puppeteer 初始化、Electron ready、CLI 参数识别和最终退出码。初始化超过 15 秒会以退出码 `1` 结束并打印明确错误，不会无限静默等待。
-4. **登录失效**：视频号发布页若跳转到 `channels.weixin.qq.com/login.html`，CLI 会立即提示重新登录并以退出码 `3` 结束，不再按普通 URL 不匹配重复重试。
-5. **官方预约发布**：`--publish-at "YYYY-MM-DD HH:mm:ss"` 只支持抖音、快手、视频号、百家号、头条和小红书。矩媒会立即上传，并在平台后台确认官方预约成功后返回；其他平台直接报错，不再创建应用内定时任务。
-6. **编译**：在项目根目录执行 `yarn build:dir` 编译命令行主进程。
+```json
+{
+  "title":"标题", "description":"描述", "tags":"", "creative_statement":"none",
+  "output_dir":"D:/results", "publish_options":{}
+}
+```
 
-## 编译
+按类型补充：
 
-- `yarn build:dir`：编译命令行主进程到 `dist/electron/main.js`
+| 类型 | 请求字段 | publish_options |
+| --- | --- | --- |
+| video | video_path、cover_path | generateImageText：布尔值 |
+| article | toutiao_article_path | quote_ai、first_publish、sync_micro：布尔值 |
+| micro | micro_text、micro_image_path：单个图片路径 | quote_ai：布尔值 |
 
+文章正文 JSON：
 
-## 抖音智能章节和自定义封面
+```json
+{"title":"标题","paragraphs":[{"text":"正文"},{"text":"正文","image":"picture.png"}]}
+```
 
-单文件发布支持 `--ai-chapters`、`--cover <横封面路径>`、`--portrait-cover <竖封面路径>`。智能章节等待平台 `/aweme/v1/chapter/recommend/get` 返回非空章节后点击保存；自定义封面按 4:3 和 3:4 完整适配后上传并保存。
+正文图片相对于正文 JSON。output_dir 须已存在。视频和文章支持 `--publish-at`；专用命令不接受 `--draft`。回执写入 output_dir 下的 `toutiao-类型-publication.json`。
 
-财经账号 `finance` 默认生成智能章节，并要求提供横竖封面。财经发布工作流自动传入本期 `cover.png` 与 `cover-portrait.png`，本地缺失时从 R2 恢复。
+## JSON 批次发布
 
+```powershell
+Get-Content -Raw -Encoding utf8 ./request.json | python -m publishing publish
+```
 
-## 快手自定义封面
+```json
+{
+  "account_group":"demo", "platforms":["douyin"], "publish_mode":"immediate", "publish_at":"now",
+  "items":[{"title":"标题","file":"D:/video.mp4","ai_chapters":false}]
+}
+```
 
-快手发布使用 `--cover <3:4封面路径>`。视频上传完成后，发布器进入封面设置的上传封面页，上传图片，选择3:4并确认。财经账号必须提供封面；财经工作流自动使用本期 `cover-portrait.png`。
+| 字段 | 说明 |
+| --- | --- |
+| account_group、platforms、items | 账号组、平台和内容列表 |
+| publish_mode、publish_at | immediate + now；scheduled + 带时区 ISO 时间 |
+| publish_at_by_platform | 按平台覆盖时间：now 或带时区 ISO 时间 |
+| targets | 可代替 platforms + items，逐条指定 platform |
+| title、account_key | 标题、指定账号 |
+| content_type、request_path | video / article / micro；文章和微头条传请求 JSON 路径 |
+| file、video_url | 本地视频、公网视频地址 |
+| description、tags、bt2 | 描述、标签、短标题 |
+| thumbnail_path、portrait_thumbnail_path、widescreen_thumbnail_path | 封面路径 |
+| ai_chapters、declare_original | 智能章节、原创声明 |
+| generate_image_text、system_cover_index | 头条图文开关、系统封面索引 |
+| category、creative_statement | 分区、创作声明 |
+| draft、sph_product_id | 草稿、视频号商品编号 |
+| publication_id、client_ref | 去重标识、跟踪标识 |
+| youtube_options | privacy_status、category_id、language、made_for_kids，YouTube 必填 |
 
+## 其他 CLI
 
-## 视频号双封面
+```text
+media-publisher cli douyin-creator-works --phone <账号组> <接口配置JSON>
+```
 
-视频号通过 `--portrait-cover` 上传3:4个人主页卡片，通过 `--cover` 上传4:3分享卡片。发布器分别打开对应编辑入口；出现素材推荐提示时选择直接编辑。每张图片校验上传内容及保存后的封面比例，两张均成功后才允许发表。财经发布默认提供本期两张封面。
+接口配置字段：listPath、metricsPath、listParams（含 max_cursor）、metricsFields、metricsHeaders。返回 works、metrics。
 
-视频号登录二维码通过登录 iframe 中的确切 XPath 定位 `img.qrcode`，直接保存图片原始数据，不遍历猜测，不截取或重绘。
+```powershell
+python -m platform_api.oauth --client-secret ./client_secret.json --output ./token.json
+python -m platform_api.oauth --inspect-token ./token.json
+python -m platform_api.oauth --configure-env ./data/demo/.env --token-file ./token.json --account demo --channel-id <频道ID>
+```
 
-视频号封面显示上传缩略图不代表平台已保存。4:3原图必须完成初始化；确认后等待对应远端封面地址更新，并下载远端图片核对内容。未就绪、保存失败或内容不匹配时停止发表。
+OAuth 参数：`--client-secret`、`--output`、`--inspect-token`、`--configure-env`、`--token-file`、`--account`、`--channel-id`、`--channel-title`、`--port`（默认18765）、`--callback`。
 
-视频号内容区同时支持独立iframe和Shadow DOM。独立iframe的元素等待在页面主执行环境进行；文件选择只触发一次原生change事件。封面编辑入口出现推荐提示时，等待提示挂载后点击直接编辑。
+## MCP
+
+```powershell
+cd mcp
+npm install
+npm run build
+node dist/index.js
+```
+
+| 工具 | 参数 |
+| --- | --- |
+| configure_accounts | groups、members |
+| list_accounts | account_group、platform，可选 |
+| login | platform、account_group，可选 timeoutSec、force |
+| login_status | login_id |
+| start_publish | 与 JSON 批次发布相同 |
+| poll_task | task_path |
+
+宿主以 stdio 启动 `node <绝对路径>/mcp/dist/index.js`，设置 MEDIA_PUBLISHER_DIR、MEDIA_PUBLISHER_PYTHON。发布后轮询返回的 task_path。
+
+## 环境变量
+
+| 变量 | 用途 |
+| --- | --- |
+| MEDIA_PUBLISHER_DIR | Publisher 根目录 |
+| MEDIA_PUBLISHER_EXECUTABLE | CLI 可执行文件 |
+| MEDIA_PUBLISHER_PYTHON | Python 可执行文件 |
+| PUBLISHING_CREDENTIALS_FILE | 凭据文件路径 |
+| PUBLISHING_CREDENTIALS_JSON | 凭据 JSON，优先于文件 |
+| MEDIA_PUBLISHER_TIMEOUT_SECONDS | 执行器等待上限，默认14520秒 |
+| PUPPETEER_EXECUTABLE_PATH | 无头抖音浏览器路径 |
+| YOUTUBE_FALLBACK_PROXY | YouTube 超时代理，默认本机7897；空值禁用 |
+| MEDIA_PUBLISHER_DISABLE_TELEMETRY | 关闭启动统计 |
+| MEDIA_PUBLISHER_GIST_ID、MEDIA_PUBLISHER_GIST_TOKEN | 可选启动统计配置 |
+
+## 许可
+
+感谢 [MatrixMedia](https://github.com/hanliang97/MatrixMedia) 和 [social-auto-upload](https://github.com/dreammis/social-auto-upload)。许可证：[GPL-2.0-only](./LICENSE)、[小红书上游 MIT](./LICENSE.social-auto-upload)。
