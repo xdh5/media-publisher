@@ -9,7 +9,7 @@ import {
   isCreativeStatementNone,
   resolveKsCreativeStatementLabel,
 } from "../../../shared/creativeStatement.js";
-import { WAIT_SELECTOR_APPEAR_MS, WAIT_UPLOAD_PROCESSING_MS, pollPageUntil } from "./uploadTimeouts.js";
+import { pollPageUntil } from "./publishPageWait.js";
 import {
   clickKuaishouScheduleConfirmation,
   setOfficialSchedule,
@@ -250,7 +250,7 @@ async function selectKsCreativeStatement(page, data) {
         }
         return false;
       },
-      { timeout: 15000 },
+      { timeout: 0 },
       label
     );
   } catch (e) {
@@ -312,9 +312,8 @@ async function selectKsCreativeStatement(page, data) {
 
 // 点击发布后必须看到平台确认。只点到按钮并等待数秒不能当作发布成功。
 async function waitForKsImmediatePublish(page) {
-  const deadline = Date.now() + 60 * 1000;
   let lastSnapshot = null;
-  while (Date.now() < deadline) {
+  while (!page.isClosed()) {
     const snapshot = await page.evaluate(() => {
       const norm = (text) => String(text || "").replace(/\s+/g, " ").trim();
       const visible = (node) => {
@@ -370,7 +369,7 @@ export default async function (page, data, window,event) {
   try {
     const sel = KUAISHOU_VIDEO_UPLOAD_SELECTOR;
     setPublishStage(page, "等待快手视频上传控件");
-    await page.waitForSelector(sel, { timeout: WAIT_SELECTOR_APPEAR_MS });
+    await page.waitForSelector(sel, { timeout: 0 });
     const uploadInputs = await page.$(sel);
     setPublishStage(page, "上传快手视频文件");
     await uploadInputs.uploadFile(path.resolve(data.filePath));
@@ -389,7 +388,7 @@ export default async function (page, data, window,event) {
         document.querySelector('[contenteditable="true"][data-placeholder*="描述"]') ||
         document.querySelector('[contenteditable="true"][aria-label*="描述"]')
       ),
-      { timeout: WAIT_SELECTOR_APPEAR_MS }
+      { timeout: 0 }
     );
     setPublishStage(page, "填写快手标题和作品描述");
     await fillKsCopy(page, data);
@@ -416,11 +415,7 @@ export default async function (page, data, window,event) {
     // (约 180s) 在大文件/弱网下把单次 Runtime.callFunctionOn 砍掉。
     await pollPageUntil(
       page,
-      () => !!document.querySelector("#preview-tours video"),
-      WAIT_UPLOAD_PROCESSING_MS,
-      2000,
-      "等待快手视频上传完成超时"
-    );
+      () => !!document.querySelector("#preview-tours video"), undefined, 2000);
     await page.waitForFunction(
       text => {
         const bar = document.querySelector("#setting-tours + div");
@@ -431,7 +426,7 @@ export default async function (page, data, window,event) {
         }
         return false;
       },
-      { timeout: 10000 },
+      { timeout: 0 },
       submitText
     );
 
@@ -492,7 +487,7 @@ export default async function (page, data, window,event) {
         const body = await response.json();
         return body.result !== 1 || body.data.list.some(item => item.title.startsWith(data.data.bt1));
       }, async () => {
-        submission = await runWithKsResponse(page, "快手提交视频", isKsSubmitResponse, submit, 600000);
+        submission = await runWithKsResponse(page, "快手提交视频", isKsSubmitResponse, submit);
         requireKsSuccess(submission, "快手提交视频");
         const requestBody = submission.request.postData();
         const submitted = (submission.request.headers()["content-type"] || "").includes("application/json")
@@ -502,7 +497,7 @@ export default async function (page, data, window,event) {
         setPublishStage(page, "等待快手提交成功并核对作品管理接口");
         if (isOfficialSchedule) await waitForOfficialScheduleAccepted(page, "快手", previousUrl);
         else await waitForKsImmediatePublish(page);
-      }, 600000);
+      });
       const body = requireKsSuccess(listed, "快手作品管理回执");
       const work = body.data.list.find(item => item.title.startsWith(data.data.bt1));
       if (!work.publishId) throw new Error("快手作品管理接口未返回作品ID，禁止自动重发");

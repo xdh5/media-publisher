@@ -26,7 +26,7 @@ export async function publishToutiaoArticle(page, data, window, event) {
   });
   setPublishStage(page, "打开头条文章发布页");
   await page.goto("https://mp.toutiao.com/profile_v4/graphic/publish", { waitUntil: "domcontentloaded" });
-  await page.waitForSelector('textarea[placeholder*="文章标题"]', { timeout: 30000 });
+  await page.waitForSelector('textarea[placeholder*="文章标题"]', { timeout: 0 });
   const assistantClose = await page.$(".ai-assistant-panel:not(.hidden-ai-assistant-panel) .close-btn");
   if (assistantClose) {
     const box = await assistantClose.boundingBox();
@@ -34,7 +34,7 @@ export async function publishToutiaoArticle(page, data, window, event) {
       setPublishStage(page, "模拟鼠标点击关闭头条文章创作助手");
       await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
       await page.waitForFunction(() => ![...document.querySelectorAll(".ai-assistant-panel:not(.hidden-ai-assistant-panel)")]
-        .some(node => node.getBoundingClientRect().width > 0), { timeout: 10000, polling: 100 });
+        .some(node => node.getBoundingClientRect().width > 0), { timeout: 0, polling: 100 });
     }
   }
   setPublishStage(page, "填写头条文章标题、正文和插图");
@@ -47,7 +47,7 @@ export async function publishToutiaoArticle(page, data, window, event) {
     .find(node => node.textContent.trim() === "无封面"));
   await noCover.asElement().click();
   await page.waitForFunction(() => document.querySelector('.article-cover input[value="1"]')?.checked,
-    { timeout: 10000, polling: 100 });
+    { timeout: 0, polling: 100 });
   setPublishStage(page, "等待头条文章正文图片上传完成");
   await waitToutiaoArticleImagesReady(page, imageCount);
   const scheduled = data.officialScheduledPublish;
@@ -66,7 +66,7 @@ export async function publishToutiaoArticle(page, data, window, event) {
   if (preview && !scheduled) {
     await clickToutiaoText(page, "预览并发布");
     await page.waitForFunction(() => [...document.querySelectorAll('button')].some(element =>
-      element.textContent.trim() === "确认发布" && !element.disabled), { timeout: 60000, polling: 100 });
+      element.textContent.trim() === "确认发布" && !element.disabled), { timeout: 0, polling: 100 });
   }
   await waitToutiaoArticleImagesReady(page, imageCount);
   setPublishStage(page, "确认发布头条文章");

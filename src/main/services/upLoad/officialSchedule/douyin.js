@@ -1,6 +1,4 @@
-import { pollPageUntil } from "../uploadTimeouts.js";
-
-const WAIT_SCHEDULE_INPUT_MS = 15 * 1000;
+import { pollPageUntil } from "../publishPageWait.js";
 
 async function replaceDateTimeInput(page, selector, value) {
   await pollPageUntil(
@@ -14,12 +12,7 @@ async function replaceDateTimeInput(page, selector, value) {
       if (!input) return false;
       input.id = "__mm_official_schedule_input";
       return true;
-    },
-    selector,
-    WAIT_SCHEDULE_INPUT_MS,
-    1500,
-    `未找到可见的官方定时发布时间输入框：${selector}`
-  );
+    }, selector, 1500);
   // 抖音和快手的日期输入框是 React 受控组件，部分页面还会设置 readonly。
   // 直接键盘输入会被日期面板的默认时间覆盖，因此使用原生 setter 并派发事件。
   await page.$eval(
@@ -63,7 +56,7 @@ export async function setDouyinSchedule(page, publishAt) {
         return isRadio && norm(el.textContent).includes("定时发布");
       });
     },
-    { timeout: WAIT_SCHEDULE_INPUT_MS }
+    { timeout: 0 }
   );
 
   const triggerId = await page.evaluate(() => {

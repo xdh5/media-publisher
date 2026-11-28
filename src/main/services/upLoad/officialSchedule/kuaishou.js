@@ -1,4 +1,4 @@
-import { WAIT_SELECTOR_APPEAR_MS } from "../uploadTimeouts.js";
+
 
 export async function setKuaishouSchedule(page, publishAt) {
   const triggerId = await page.evaluate(() => {
@@ -114,7 +114,7 @@ export async function setKuaishouSchedule(page, publishAt) {
       };
       return [...document.querySelectorAll(".ant-picker-dropdown")].some(visible);
     },
-    { timeout: WAIT_SELECTOR_APPEAR_MS }
+    { timeout: 0 }
   );
   const targetDate = publishAt.minute.slice(0, 10);
   const selectPickerPart = async (kind, value, columnIndex = -1) => {
@@ -273,8 +273,7 @@ export async function setKuaishouSchedule(page, publishAt) {
 }
 
 export async function clickKuaishouScheduleConfirmation(page) {
-  const deadline = Date.now() + 10000;
-  while (Date.now() < deadline) {
+  while (!page.isClosed()) {
     const clicked = await page.evaluate(() => {
       const norm = (text) => String(text || "").replace(/\s+/g, "").trim();
       const visible = (el) => {

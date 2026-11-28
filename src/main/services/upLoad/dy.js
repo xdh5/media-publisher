@@ -5,11 +5,7 @@ import fs from "fs";
 import { setPublishStage, getPublishProgress } from "../publishStage.js";
 import maybeClosePublishWindow from "./closeWindow.js";
 import { resolveDyCreativeStatementLabel } from "../../../shared/creativeStatement.js";
-import {
-  WAIT_SELECTOR_APPEAR_MS,
-  WAIT_UPLOAD_PROCESSING_MS,
-  pollPageUntil,
-} from "./uploadTimeouts.js";
+import { pollPageUntil } from "./publishPageWait.js";
 import {
   setOfficialSchedule,
   waitForOfficialScheduleAccepted,
@@ -54,7 +50,7 @@ async function selectDyCreativeStatement(page, data) {
 
   await page.waitForSelector(".semi-modal-body .semi-radio-addon", {
     visible: true,
-    timeout: WAIT_SELECTOR_APPEAR_MS,
+    timeout: 0,
   });
 
   const picked = await page.evaluate((text) => {
@@ -94,10 +90,9 @@ async function selectDyCreativeStatement(page, data) {
   await page.waitForTimeout(400);
 }
 
-async function selectDyCreativeStatementWithRetry(page, data, maxMs = 60000) {
-  const deadline = Date.now() + maxMs;
+async function selectDyCreativeStatementWithRetry(page, data) {
   let lastErr = null;
-  while (Date.now() < deadline) {
+  while (!page.isClosed()) {
     try {
       await selectDyCreativeStatement(page, data);
       return;
@@ -140,7 +135,7 @@ async function clickDyPublish(page, isDraftMode) {
     : "#popover-tip-container";
   if (isDraftMode) {
     const submitBtn = await page.waitForSelector(submitSelector, {
-      timeout: WAIT_SELECTOR_APPEAR_MS,
+      timeout: 0,
       visible: true,
     });
     await submitBtn.click({ delay: 200 });
@@ -159,7 +154,7 @@ async function clickDyPublish(page, isDraftMode) {
       };
       return [...document.querySelectorAll("button, [role='button']")]
         .some((element) => visible(element) && !element.disabled && norm(element.textContent) === "发布");
-    }, { timeout: WAIT_SELECTOR_APPEAR_MS });
+    }, { timeout: 0 });
     const buttonHandles = await page.$$("button, [role='button']");
     let clicked = false;
     for (const buttonHandle of buttonHandles) {
@@ -192,9 +187,8 @@ async function clickDyPublish(page, isDraftMode) {
 
 // 点击发布后必须看到平台确认。只点到按钮并等待数秒不能当作发布成功。
 async function waitForDyImmediatePublish(page) {
-  const deadline = Date.now() + 60 * 1000;
   let lastSnapshot = null;
-  while (Date.now() < deadline) {
+  while (!page.isClosed()) {
     const snapshot = await page.evaluate(() => {
       const norm = (text) => String(text || "").replace(/\s+/g, " ").trim();
       const visible = (node) => {
@@ -254,21 +248,6 @@ async function fillDyTitle(page, title) {
   if (!expected) {
     throw new Error("抖音标题为空");
   }
-  // 上传后平台会异步把文件名写进标题框。等它落定再清空，避免写完后又被接上一次。
-  await page
-    .waitForFunction(
-      () => {
-        const root = document.querySelector(".semi-input");
-        const input =
-          root && root.matches("input,textarea")
-            ? root
-            : root && root.querySelector("input,textarea");
-        return Boolean(input && String(input.value || "").trim());
-      },
-      { timeout: 8000 }
-    )
-    .catch(() => {});
-
   for (let attempt = 1; attempt <= 3; attempt += 1) {
     const input = await page.$(".semi-input");
     if (!input) {
@@ -328,7 +307,7 @@ export default async function (page, data, window, event) {
     // 等待 name=upload-btn 的 input 出现
     setPublishStage(page, "等待抖音视频上传控件");
     await page.waitForSelector('input[name="upload-btn"]', {
-      timeout: WAIT_SELECTOR_APPEAR_MS,
+      timeout: 0,
     });
     const uploadInputs = await page.$$('input[name="upload-btn"]');
     // 取最后一个 input 元素
@@ -341,7 +320,7 @@ export default async function (page, data, window, event) {
   try {
     setPublishStage(page, "填写抖音标题和话题");
     await page.waitForSelector(".semi-input", {
-      timeout: WAIT_SELECTOR_APPEAR_MS,
+      timeout: 0,
     });
     await fillDyTitle(page, data.data.bt1);
 
@@ -375,9 +354,7 @@ export default async function (page, data, window, event) {
           }
         }
         return false;
-      },
-      WAIT_UPLOAD_PROCESSING_MS
-    );
+      }, undefined, 2000);
 
     // 「保存权限」区域往往在预览视频就绪后才挂载；放在预览等待之后，并放宽文案/控件匹配
     setPublishStage(page, "设置抖音保存权限");
@@ -401,7 +378,7 @@ export default async function (page, data, window, event) {
         }
         return false;
       },
-      { timeout: 30000 }
+      { timeout: 0 }
     );
     const saved = await page.evaluate(() => {
       const norm = (t) => String(t).replace(/\s+/g, "").trim();
@@ -446,7 +423,7 @@ export default async function (page, data, window, event) {
       submitting = true;
       const receipt = await runWithDyResponse(page, "发布作品", response =>
         new URL(response.url()).pathname === "/web/api/media/aweme/create_v2/" &&
-        response.request().method() === "POST", () => clickDyPublish(page, false), 600000);
+        response.request().method() === "POST", () => clickDyPublish(page, false));
       const body = requireDySuccess(receipt, "发布作品");
       if (!body.item_id) throw new Error("抖音发布接口未返回作品ID，发布结果待核对，禁止自动重发");
       publication = { id: String(body.item_id), url: `https://www.douyin.com/video/${body.item_id}`,

@@ -11,8 +11,8 @@ export async function uploadSphCover(page, filename, share = false) {
     const root = document.querySelector("wujie-app.wujie_iframe")?.shadowRoot || document;
     const component = root.querySelector(".cover-preview-wrap")?.__vue__;
     return component && !component.disabled && !component.disableTip && component.width > 0 && component.height > 0;
-  }, { timeout: 60000, polling: 250 });
-  const edit = await page.waitForSelector(`wujie-app.wujie_iframe >>> ${selector}`, { visible: true, timeout: 30000 });
+  }, { timeout: 0, polling: 250 });
+  const edit = await page.waitForSelector(`wujie-app.wujie_iframe >>> ${selector}`, { visible: true, timeout: 0 });
   await edit.evaluate(element => {
     // 卡片点击后阻止事件冒泡，避免平台的外部点击监听立即关闭推荐菜单。
     element.addEventListener("click", event => event.stopPropagation(), { once: true });
@@ -20,8 +20,8 @@ export async function uploadSphCover(page, filename, share = false) {
   });
   let editorReady = false;
   let directClicked = false;
-  const deadline = Date.now() + 30000;
-  while (Date.now() < deadline) {
+
+  while (!page.isClosed()) {
     const titles = (await Promise.all(page.frames().map(frame => frame.$$("pierce/.edit-cover-dialog h3")))).flat();
     for (const title of titles) {
       if (await title.evaluate((node, expected) => node.textContent.trim() === expected &&
@@ -52,7 +52,7 @@ export async function uploadSphCover(page, filename, share = false) {
   }, share);
   const expectedImage = `data:image/png;base64,${fs.readFileSync(path.resolve(filename)).toString("base64")}`;
   const input = await page.$('pierce/.single-cover-uploader-wrap > input[type="file"]');
-  const chooserReady = page.waitForFileChooser({ timeout: 15000 });
+  const chooserReady = page.waitForFileChooser({ timeout: 0 });
   setPublishStage(page, `上传视频号${heading}封面图片`);
   await input.evaluate(element => element.click());
   await (await chooserReady).accept([path.resolve(filename)]);
@@ -79,7 +79,7 @@ export async function uploadSphCover(page, filename, share = false) {
     context.drawImage(image, 0, 0);
     const actual = [...new Uint8Array(await crypto.subtle.digest("SHA-256", context.getImageData(0, 0, canvas.width, canvas.height).data))].join(",");
     return actual === expected;
-  }, { timeout: 30000, polling: 500 }, expectedHash);
+  }, { timeout: 0, polling: 500 }, expectedHash);
   if (share) {
     await page.waitForFunction(() => {
       const root = document.querySelector("wujie-app.wujie_iframe")?.shadowRoot || document;
@@ -88,7 +88,7 @@ export async function uploadSphCover(page, filename, share = false) {
       const image = renderer?.$refs.croppieRefHorizon?.croppie?.elements.img;
       return !editor.isCroppieLoading && renderer?.isCroppieReady && image?.complete &&
         (image.naturalWidth || image.width) > 0 && (image.naturalHeight || image.height) > 0;
-    }, { timeout: 30000, polling: 500 }).catch(() => {
+    }, { timeout: 0, polling: 500 }).catch(() => {
       throw new Error("4:3封面原图尚未就绪，停止发表，未提交作品");
     });
   }
@@ -106,14 +106,14 @@ export async function uploadSphCover(page, filename, share = false) {
       .some(element => getComputedStyle(element).display !== "none");
     return !opened && image.complete &&
       Math.abs(image.naturalWidth / image.naturalHeight - ratio) < 0.02;
-  }, { timeout: 60000, polling: 100 }, selector, share ? 4 / 3 : 3 / 4);
+  }, { timeout: 0, polling: 100 }, selector, share ? 4 / 3 : 3 / 4);
   await page.waitForFunction((isShare, previous) => {
     const component = (document.querySelector("wujie-app.wujie_iframe")?.shadowRoot || document).querySelector(".cover-preview-wrap").__vue__;
     const video = component.video;
     const url = isShare ? video.shareCoverUrl : video.coverUrl;
     const confirmed = isShare ? component.hasEditShareCover : component.hasEditProfileCover;
     return confirmed && /^https?:/.test(url || "") && url !== previous;
-  }, { timeout: 60000, polling: 500 }, share, previousRemote);
+  }, { timeout: 0, polling: 500 }, share, previousRemote);
   await verifySphRemoteCover(page, filename, share);
 
 }
@@ -126,7 +126,7 @@ export async function verifySphRemoteCover(page, filename, share = false) {
     return isShare ? video.shareCoverUrl : video.coverUrl;
   }, share);
   setPublishStage(page, `核对视频号${heading}远端封面`);
-  const response = await fetch(remoteUrl, { signal: AbortSignal.timeout(30000) });
+  const response = await fetch(remoteUrl, {  });
   if (!response.ok) throw new Error(`${heading}远端图片读取失败：HTTP ${response.status}`);
   const savedImage = Buffer.from(await response.arrayBuffer());
   const matches = await page.evaluate(async (expected, actual) => {

@@ -1,16 +1,15 @@
 import { setPublishStage } from "../publishStage.js";
 import fs from 'fs';
 import path from 'path';
-import { WAIT_SELECTOR_APPEAR_MS, WAIT_UPLOAD_PROCESSING_MS, pollPageUntil } from './uploadTimeouts.js';
+import { pollPageUntil } from "./publishPageWait.js";
 
-export async function waitBilibiliElement(page, selector, timeout = 15000) {
-  const deadline = Date.now() + timeout;
-  while (Date.now() < deadline) {
+export async function waitBilibiliElement(page, selector) {
+  while (!page.isClosed()) {
     const node = await page.$(selector);
     if (node) return node;
     await page.waitForTimeout(200);
   }
-  throw new Error(`B站控件未出现：${selector}`);
+  throw new Error(`发布页面已关闭，停止等待B站控件：${selector}`);
 }
 
 export async function clickBilibiliText(page, text) {
@@ -26,9 +25,9 @@ export async function selectBilibiliCategory(page, category) {
   if (!category) return;
   const trigger = await waitBilibiliElement(page, '.video-human-type .select-controller');
   await trigger.evaluate(e => e.click());
-  await page.waitForFunction(text => [...document.querySelectorAll('div,span,p')].some(e => e.childElementCount === 0 && e.textContent.trim() === text && e.getBoundingClientRect().width > 0), { polling: 200, timeout: 15000 }, category);
+  await page.waitForFunction(text => [...document.querySelectorAll('div,span,p')].some(e => e.childElementCount === 0 && e.textContent.trim() === text && e.getBoundingClientRect().width > 0), { polling: 200, timeout: 0 }, category);
   await clickBilibiliText(page, category);
-  await page.waitForFunction(text => document.querySelector('.video-human-type .select-container')?.textContent.includes(text), { polling: 200, timeout: 15000 }, category);
+  await page.waitForFunction(text => document.querySelector('.video-human-type .select-container')?.textContent.includes(text), { polling: 200, timeout: 0 }, category);
 }
 
 export async function uploadBilibiliCover(page, filename, widescreen) {
@@ -39,18 +38,18 @@ export async function uploadBilibiliCover(page, filename, widescreen) {
     if (root.querySelector('input').checked) root.querySelector('label').click();
   });
   await input.uploadFile(path.resolve(filename));
-  await page.waitForFunction(() => !!document.querySelector('.cover-editor-panel .upload-area.has-image'), { polling: 200, timeout: 30000 });
+  await page.waitForFunction(() => !!document.querySelector('.cover-editor-panel .upload-area.has-image'), { polling: 200, timeout: 0 });
   if (widescreen) {
     setPublishStage(page, '上传B站个人空间封面');
     await clickBilibiliText(page, '个人空间封面（16:9）');
     const wideInput = await waitBilibiliElement(page, '.cover-editor-panel input[type=file]');
     await wideInput.uploadFile(path.resolve(widescreen));
-    await page.waitForFunction(() => !!document.querySelector('.cover-editor-panel .upload-area.has-image'), { polling: 200, timeout: 30000 });
+    await page.waitForFunction(() => !!document.querySelector('.cover-editor-panel .upload-area.has-image'), { polling: 200, timeout: 0 });
   }
   console.log('[blbl] 双比例封面已载入，保存封面');
   setPublishStage(page, '保存B站封面并等待编辑器关闭');
   await clickBilibiliText(page, '完成');
-  await page.waitForFunction(() => !document.querySelector('.cover-main .cover-empty') && !!document.querySelector('.cover-main .cover-img'), { polling: 200, timeout: 60000 });
+  await page.waitForFunction(() => !document.querySelector('.cover-main .cover-empty') && !!document.querySelector('.cover-main .cover-img'), { polling: 200, timeout: 0 });
 }
 
 export async function generateBilibiliChapters(page) {
@@ -62,13 +61,13 @@ export async function generateBilibiliChapters(page) {
   const editor = await iframe.contentFrame();
   let lastChapterState = '';
   const framePoll = { isClosed: () => page.isClosed(), evaluate: async fn => {
-    // 平台默认只轮询60秒；与发布器等待期限保持一致，继续接收服务端生成结果。
+    // 持续接收平台章节结果，由通用监控判断页面是否停滞。
     await editor.evaluate(timeout => {
       for (const element of document.querySelectorAll('*')) {
         const component = element.__vue__;
         if (component && 'aiTimeoutTime' in component) component.aiTimeoutTime = timeout;
       }
-    }, WAIT_UPLOAD_PROCESSING_MS);
+    }, Number.MAX_SAFE_INTEGER);
     const state = await editor.evaluate(() => ({ text: document.body.innerText.split('\n').filter(line => !/^\d{2}:\d{2}$/.test(line)).join('\n'),
       buttons: [...document.querySelectorAll('button,[role=button]')].filter(e => e.getBoundingClientRect().width > 0)
         .map(e => ({ text: e.innerText, disabled: e.disabled })) }));
@@ -81,7 +80,7 @@ export async function generateBilibiliChapters(page) {
     if (percentage) setPublishStage(page, `生成B站智能章节（${percentage[1]}%）`);
     return editor.evaluate(fn);
   }, waitForTimeout: ms => page.waitForTimeout(ms) };
-  await pollPageUntil(framePoll, () => /智能/.test(document.body.innerText), 60000, 500, 'B站章节播放器尚未加载智能章节控件');
+  await pollPageUntil(framePoll, () => /智能/.test(document.body.innerText), undefined, 500);
   console.log('[blbl] 章节编辑器：' + await editor.evaluate(() => document.body.innerText));
   const chapterResponse = async response => {
     try {
@@ -99,12 +98,12 @@ export async function generateBilibiliChapters(page) {
   await clickBilibiliText(editor, '智能生成');
   console.log('[B站章节主页面提示]', await page.evaluate(() => [...document.querySelectorAll('[role=dialog],.bili-dialog,.bili-modal')]
     .filter(e => e.getBoundingClientRect().width > 0).map(e => e.innerText)));
-  await pollPageUntil(framePoll, () => /章节数[：:]?\s*[1-9]\d*/.test(document.body.innerText) && !/智能分析中/.test(document.body.innerText), WAIT_UPLOAD_PROCESSING_MS, 1000, 'B站智能章节未生成有效章节');
+  await pollPageUntil(framePoll, () => /章节数[：:]?\s*[1-9]\d*/.test(document.body.innerText) && !/智能分析中/.test(document.body.innerText), undefined, 1000);
   const chapters = await editor.evaluate(() => ({ count: Number(document.body.innerText.match(/章节数[：:]?\s*(\d+)/)[1]),
     titles: [...document.querySelectorAll('input,textarea')].map(e => e.value.trim()).filter(text => text && !/^[\d:.]+$/.test(text)) }));
   setPublishStage(page, '保存B站智能章节');
   await clickBilibiliText(editor, '保存');
-  await page.waitForFunction(() => ![...document.querySelectorAll('.chapter-setting iframe')].some(e => e.getBoundingClientRect().width > 0), { polling: 200, timeout: 30000 });
+  await page.waitForFunction(() => ![...document.querySelectorAll('.chapter-setting iframe')].some(e => e.getBoundingClientRect().width > 0), { polling: 200, timeout: 0 });
   page.off('response', chapterResponse);
   return chapters;
 }
@@ -134,7 +133,7 @@ export async function setBilibiliSchedule(page, text) {
 
 export async function submitBilibiliVideo(page, data) {
   setPublishStage(page, '提交B站投稿并等待接口回执');
-  const response = page.waitForResponse(r => r.request().method() === 'POST' && /\/x\/vu\/web\/(add|edit)(\/|\?|$)/.test(r.url()), { timeout: 60000 });
+  const response = page.waitForResponse(r => r.request().method() === 'POST' && /\/x\/vu\/web\/(add|edit)(\/|\?|$)/.test(r.url()), { timeout: 0 });
   await page.$eval('.submit-container .submit-add', e => e.click());
   const submitted = await response;
   if (!submitted.ok()) throw new Error(`B站投稿接口返回HTTP ${submitted.status()}`);

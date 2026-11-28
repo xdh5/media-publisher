@@ -3,11 +3,7 @@ import path from 'path'
 import maybeClosePublishWindow from './closeWindow.js'
 import { setOfficialSchedule } from './officialSchedule.js'
 import { resolveBjhCreativeStatementLabel } from '../../../shared/creativeStatement.js'
-import {
-  WAIT_SELECTOR_APPEAR_MS,
-  WAIT_UPLOAD_PROCESSING_MS,
-  pollPageUntil
-} from './uploadTimeouts.js'
+import { pollPageUntil } from "./publishPageWait.js";
 
 async function selectBjhCreativeStatement(page, data) {
   const value = data.data && data.data.creativeStatement
@@ -21,7 +17,7 @@ async function selectBjhCreativeStatement(page, data) {
   try {
     await page.waitForSelector('input[placeholder="请选择创作声明"]', {
       visible: true,
-      timeout: 15000
+      timeout: 0
     })
   } catch (_) {
     console.warn('未找到百家号创作声明输入框，跳过')
@@ -57,7 +53,7 @@ async function selectBjhCreativeStatement(page, data) {
       '.cheetah-modal-content .cheetah-radio-wrapper',
       {
         visible: true,
-        timeout: 15000
+        timeout: 0
       }
     )
   } catch (e) {
@@ -192,9 +188,8 @@ async function selectBjhCreativeStatement(page, data) {
 const BJH_OPERATOR_ROOT = '#new-operator-content .op-list-right'
 
 /** 等待发布/存草稿按钮变为可点击（disabled 解除） */
-async function waitForBjhActionButtonReady(page, buttonText, totalMs = 120000) {
-  const deadline = Date.now() + totalMs
-  while (Date.now() < deadline) {
+async function waitForBjhActionButtonReady(page, buttonText) {
+  while (!page.isClosed()) {
     const ok = await page
       .evaluate(text => {
         const norm = t =>
@@ -233,8 +228,7 @@ async function waitForBjhActionButtonReady(page, buttonText, totalMs = 120000) {
     if (ok) return
     await page.waitForTimeout(2000)
   }
-  const err = new Error(`等待百家号「${buttonText}」按钮可点击超时`)
-  err.name = 'TimeoutError'
+  const err = new Error(`发布页面已关闭，停止等待百家号「${buttonText}」按钮`)
   throw err
 }
 
@@ -347,7 +341,7 @@ export default async function (page, data, window, event) {
     ]
     const combinedSelector = UPLOAD_SELECTORS.join(', ')
     await page.waitForSelector(combinedSelector, {
-      timeout: WAIT_SELECTOR_APPEAR_MS
+      timeout: 0
     })
     const uploadInputs = await page.$$(combinedSelector)
     if (!uploadInputs.length) throw new Error('未找到百家号上传 input')
@@ -366,11 +360,11 @@ export default async function (page, data, window, event) {
     try {
       await page.waitForSelector('input[placeholder="请选择创作声明"]', {
         visible: true,
-        timeout: 60 * 1000
+        timeout: 0
       })
       console.log('[bjh] 发布表单已就绪（声明 input 已出现）')
     } catch (_) {
-      console.warn('[bjh] 等待声明 input 超时，按当前 DOM 继续尝试找标题')
+      console.warn('[bjh] 等待声明 input 结束，按当前 DOM 继续尝试找标题')
     }
     // 再等一拍，避免 transition 过程中 DOM 还在变
     await page.waitForTimeout(800)
@@ -416,7 +410,7 @@ export default async function (page, data, window, event) {
     const TITLE_SELECTOR =
       'div[contenteditable="true"][class*="contentEditable"], div[contenteditable="true"][class*="FeEditorApp"]'
     setPublishStage(page, '填写百家号作品标题')
-    await page.waitForSelector(TITLE_SELECTOR, { timeout: 20 * 1000 })
+    await page.waitForSelector(TITLE_SELECTOR, { timeout: 0 })
     const titleHandle = await page.$(TITLE_SELECTOR)
     if (!titleHandle) throw new Error('未找到标题 contenteditable')
 
@@ -470,18 +464,13 @@ export default async function (page, data, window, event) {
   try {
     // 等待 .upload-step-progress  .progress-container.uploading 消失
     setPublishStage(page, '等待百家号视频上传完成')
-    // 用 pollPageUntil 替代 waitForSelector，避免 puppeteer 默认 protocolTimeout
-    // (约 180s) 在弱网/大文件下把 CDP Runtime.callFunctionOn 提前砍掉。
+    // 持续轮询上传状态，由通用监控判断页面是否停滞。
     await pollPageUntil(
       page,
       () =>
         !document.querySelector(
           '.upload-step-progress .progress-container.uploading'
-        ),
-      WAIT_UPLOAD_PROCESSING_MS,
-      2000,
-      '等待百家号视频上传完成超时'
-    )
+        ), undefined, 2000)
     await page.waitForTimeout(1000)
 
     const isOfficialSchedule = Boolean(data.officialScheduledPublish)
@@ -501,11 +490,7 @@ export default async function (page, data, window, event) {
         "var container = document.querySelector('#cover-tabs-container');" +
         "if (!container) return true;" +
         "return !container.querySelector('.cheetah-progress-inner');" +
-      "})()",
-      5 * 60 * 1000,
-      2000,
-      '等待百家号视频上传进度条消失超时'
-    )
+      "})()", undefined, 2000)
     console.log('[bjh] 视频上传进度条已消失，准备提交')
 
     // 草稿 / 发布 二选一点击，不能两个都点（先点存草稿会改变页面状态，发布按钮就摸不到了）
@@ -547,24 +532,16 @@ export default async function (page, data, window, event) {
     // 点击后解析 .cheetah-message.cheetah-message-top 的图标类型：
     //   aria-label="info-circle"  → 成功提示，直接结束
     //   aria-label="close-circle" → 失败提示，重试
-    //   10s 内不出现任何提示      → 也视为成功
     let clickSuccess = false
     setPublishStage(page, '提交百家号发布或草稿并等待平台提示')
     for (let attempt = 1; attempt <= 10; attempt++) {
       await page.mouse.click(cx, cy, { delay: 80 })
       console.log(`[bjh] 第 ${attempt} 次点击「${actionText}」at (${Math.round(cx)}, ${Math.round(cy)})`)
 
-      // 等最多 10s，监听消息框出现
-      const appeared = await page.waitForSelector('.cheetah-message.cheetah-message-top', {
+      await page.waitForSelector('.cheetah-message.cheetah-message-top', {
         visible: true,
-        timeout: 10000
-      }).then(() => true).catch(() => false)
-
-      if (!appeared) {
-        console.log(`[bjh] 10s 内未出现任何提示，点击成功`)
-        clickSuccess = true
-        break
-      }
+        timeout: 0
+      })
 
       // 出现提示后，读取图标 aria-label 判断成功/失败
       const msgType = await page.evaluate(function () {
@@ -585,7 +562,7 @@ export default async function (page, data, window, event) {
       console.warn(`[bjh] 出现 ${msgType} 失败提示，第 ${attempt} 次重试...`)
       await page.waitForSelector('.cheetah-message.cheetah-message-top', {
         hidden: true,
-        timeout: 5000
+        timeout: 0
       }).catch(() => {})
       await page.waitForTimeout(500)
     }

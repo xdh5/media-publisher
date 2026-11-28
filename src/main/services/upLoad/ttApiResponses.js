@@ -36,7 +36,7 @@ export async function uploadToutiaoImages(page, label, count, action) {
     console.log("[头条图片接口回执]", JSON.stringify({ operation: label, completed: images.length, expected: count,
       requestPath: url.pathname, httpStatus: response.status(), uri, status: body.code }));
     return images.length === count;
-  }, action, 600000);
+  }, action);
   return images;
 }
 
@@ -53,7 +53,7 @@ export async function submitToutiaoContent(page, data, kind, action) {
     }
     return false;
   },
-  action, 600000);
+  action);
   const directory = data.publishOptions?.toutiaoManifestPath
     ? JSON.parse(fs.readFileSync(data.publishOptions.toutiaoManifestPath, "utf8")).output_dir
     : path.dirname(path.resolve(data.filePath));

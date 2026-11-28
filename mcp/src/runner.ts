@@ -179,7 +179,7 @@ function executeMatrixPublish(
         lastJson,
       });
     };
-    const timer = setTimeout(() => {
+    const timer = args[0] === "publish" ? undefined : setTimeout(() => {
       try {
         stopCliProcess(child);
       } catch {

@@ -7,40 +7,40 @@ export async function uploadKsCover(page, filename) {
   setPublishStage(page, "打开快手封面编辑器");
   await page.evaluate(() => document.querySelector('[class*="_cover-full-editor_"]').click());
   await page.waitForFunction(() => [...document.querySelectorAll("div")].some(element =>
-    element.childElementCount === 0 && element.textContent.trim() === "上传封面"), { timeout: 15000, polling: 100 });
+    element.childElementCount === 0 && element.textContent.trim() === "上传封面"), { timeout: 0, polling: 100 });
   await page.evaluate(() => [...document.querySelectorAll("div")].find(element =>
     element.childElementCount === 0 && element.textContent.trim() === "上传封面").click());
   const clear = await page.$('[class*="_cropper-upload-clear_"]');
   if (clear) await clear.click();
-  const input = await page.waitForSelector('[class*="_cropper-upload-upload_"] input[type="file"]', { timeout: 15000 });
+  const input = await page.waitForSelector('[class*="_cropper-upload-upload_"] input[type="file"]', { timeout: 0 });
   setPublishStage(page, "上传快手竖版封面图片");
   await input.uploadFile(path.resolve(filename));
-  await page.waitForSelector('[class*="_cropper-upload-clear_"]', { timeout: 30000 });
+  await page.waitForSelector('[class*="_cropper-upload-clear_"]', { timeout: 0 });
   setPublishStage(page, "等待快手封面裁剪画布载入");
   await page.waitForFunction(() => {
     const canvas = [...document.querySelectorAll('canvas[class*="_cutter-raw_"]')].find(node => node.getBoundingClientRect().width > 0);
     return canvas && canvas.width > 0 && canvas.height > 0 &&
       canvas.getContext("2d").getImageData(Math.floor(canvas.width / 2), Math.floor(canvas.height / 2), 1, 1).data[3] > 0;
-  }, { timeout: 30000, polling: 100 });
+  }, { timeout: 0, polling: 100 });
   setPublishStage(page, "设置快手封面比例并保存");
   await page.evaluate(() => {
     [...document.querySelectorAll('[class*="_ratio-item_"]')].find(element =>
       element.querySelector("span")?.textContent === "3:4").click();
   });
   await page.waitForFunction(() => [...document.querySelectorAll('[class*="_ratio-item_"]')].some(element =>
-    element.querySelector("span")?.textContent === "3:4" && element.className.includes("_active_")), { timeout: 10000, polling: 100 });
+    element.querySelector("span")?.textContent === "3:4" && element.className.includes("_active_")), { timeout: 0, polling: 100 });
   const receipt = await runWithKsResponse(page, "快手裁剪封面上传", response =>
     response.request().method() === "POST" &&
     new URL(response.url()).pathname === "/rest/cp/works/v4/video/pc/cover/edit/cover/upload",
   () => page.evaluate(() => [...document.querySelectorAll("button")].find(element =>
-    element.textContent.trim() === "确认" && !element.disabled && element.getBoundingClientRect().width > 0).click()), 600000);
+    element.textContent.trim() === "确认" && !element.disabled && element.getBoundingClientRect().width > 0).click()));
   const body = requireKsSuccess(receipt, "快手裁剪封面上传");
   if (!body.data.coverKey) throw new Error("快手封面上传接口未返回coverKey，尚未提交视频");
   await page.waitForFunction(() => ![...document.querySelectorAll("button")].some(element =>
-    element.textContent.trim() === "确认" && element.getBoundingClientRect().width > 0), { timeout: 60000, polling: 100 });
+    element.textContent.trim() === "确认" && element.getBoundingClientRect().width > 0), { timeout: 0, polling: 100 });
   setPublishStage(page, "核对快手平台保存的封面比例和内容");
   const actual = await page.evaluate(async (key, expected) => {
-    const response = await fetch(`/rest/cp/works/v2/video/pc/upload/cover/view?coverKey=${encodeURIComponent(key)}`, { signal: AbortSignal.timeout(30000) });
+    const response = await fetch(`/rest/cp/works/v2/video/pc/upload/cover/view?coverKey=${encodeURIComponent(key)}`, {  });
     if (!response.ok) throw new Error(`快手封面读取失败：HTTP ${response.status}`);
     const blob = await response.blob();
     const actual = await createImageBitmap(blob);

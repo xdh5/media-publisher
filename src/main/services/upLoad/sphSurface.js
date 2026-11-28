@@ -11,7 +11,7 @@ export function resolveSphSurface(page) {
         await frame.waitForFunction((query, visible) => {
           const element = document.querySelector(query);
           return element && (!visible || element.getBoundingClientRect().width > 0);
-        }, { timeout: options.timeout, polling: 100 }, value, options.visible);
+        }, { timeout: 0, polling: 100 }, value, options.visible);
         return frame.$(value);
       };
       if (name === "click") return selector => frame.evaluate(query => document.querySelector(query).click(), selector.replace("wujie-app.wujie_iframe >>> ", ""));

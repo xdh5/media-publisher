@@ -1,14 +1,12 @@
 import fs from "fs";
 
-const WAIT_SCHEDULE_CONFIRM_MS = 60 * 1000;
-
 async function confirmDouyinScheduledItem(page, expectedTitle) {
   const title = String(expectedTitle || "").replace(/\s+/g, "").trim();
   if (!title) return false;
 
   const manageUrl = "https://creator.douyin.com/creator-micro/content/manage";
   if (!page.url().includes("/content/manage")) {
-    await page.goto(manageUrl, { waitUntil: "domcontentloaded", timeout: WAIT_SCHEDULE_CONFIRM_MS });
+    await page.goto(manageUrl, { waitUntil: "domcontentloaded", timeout: 0 });
   }
 
   try {
@@ -18,7 +16,7 @@ async function confirmDouyinScheduledItem(page, expectedTitle) {
         const text = norm(element.textContent);
         return text === expected;
       });
-    }, { timeout: WAIT_SCHEDULE_CONFIRM_MS }, title);
+    }, { timeout: 0 }, title);
     return true;
   } catch {
     return false;
@@ -26,9 +24,8 @@ async function confirmDouyinScheduledItem(page, expectedTitle) {
 }
 
 export async function waitForOfficialScheduleAccepted(page, platform, previousUrl, expectedTitle = "", publishWindow = null) {
-  let deadline = Date.now() + WAIT_SCHEDULE_CONFIRM_MS;
   let verificationShown = false;
-  while (Date.now() < deadline) {
+  while (!page.isClosed()) {
     if (platform === "抖音" && !verificationShown) {
       const requiresVerification = await page.evaluate(() => {
         const text = document.body.innerText;
@@ -36,7 +33,6 @@ export async function waitForOfficialScheduleAccepted(page, platform, previousUr
       }).catch(() => false);
       if (requiresVerification) {
         verificationShown = true;
-        deadline = Date.now() + 20 * 60 * 1000;
         if (publishWindow) {
           publishWindow.setOpacity(1);
           publishWindow.setSkipTaskbar(false);
@@ -108,29 +104,5 @@ export async function waitForOfficialScheduleAccepted(page, platform, previousUr
     }
     await page.waitForTimeout(500);
   }
-  const diagnostic = await page.evaluate(() => {
-    const norm = (text) => String(text || "").replace(/\s+/g, " ").trim();
-    const visible = (element) => {
-      const style = window.getComputedStyle(element);
-      const rect = element.getBoundingClientRect();
-      return style.display !== "none" && style.visibility !== "hidden" && rect.width > 0 && rect.height > 0;
-    };
-    const selectors = [
-      ".semi-toast", ".semi-notification", ".ant-message", ".ant-notification",
-      ".ant-modal", ".byte-message", ".byte-notification", ".cheetah-message",
-      "[role='alert']", "[role='dialog']",
-    ];
-    const prompts = [...document.querySelectorAll(selectors.join(","))]
-      .filter(visible)
-      .map((element) => norm(element.textContent))
-      .filter(Boolean)
-      .slice(0, 8);
-    const buttons = [...document.querySelectorAll("button, [role='button']")]
-      .filter(visible)
-      .map((element) => ({ text: norm(element.textContent), disabled: Boolean(element.disabled) }))
-      .filter((item) => item.text)
-      .slice(-12);
-    return { url: location.href, prompts, buttons };
-  }).catch(() => ({ url: page.url(), prompts: [], buttons: [] }));
-  throw new Error(`${platform}未确认官方定时发布成功，页面状态: ${JSON.stringify(diagnostic)}`);
+  throw new Error("发布页面已关闭，停止等待官方预约确认");
 }

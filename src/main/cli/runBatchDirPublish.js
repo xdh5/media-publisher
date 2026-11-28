@@ -2,7 +2,6 @@ import path from "path";
 import fs from "fs";
 import { normalizeCreativeStatement } from "../../shared/creativeStatement.js";
 import { runPuppeteerTask } from "../services/puppeteerFile";
-import { CLI_PUBLISH_TIMEOUT_MS } from "../services/upLoad/uploadTimeouts.js";
 import { parseXlsxRows, resolveFileInDir } from "./batchPublishFiles.js";
 
 function fileStem(filePath) {
@@ -145,16 +144,10 @@ export async function runBatchDirPublish(v, cfg) {
       const finish = (ok, message) => {
         if (settled) return;
         settled = true;
-        clearTimeout(timer);
         resolve({ ok, message });
       };
 
-      const timer = setTimeout(() => {
-        const min = Math.round(CLI_PUBLISH_TIMEOUT_MS / 60000);
-        const msg = "CLI publish 超时（" + min + " 分钟）";
-        console.error("[" + row.fileName + "] " + msg);
-        finish(false, msg);
-      }, CLI_PUBLISH_TIMEOUT_MS);
+
 
       const transport = {
         reply(channel, payload) {

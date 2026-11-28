@@ -1,11 +1,12 @@
 "use strict";
 import { getPublishProgress } from "./publishStage.js";
 
-/** 先监听再操作，避免快速响应丢失；操作失败或超时后释放监听器。 */
-export async function runWithPublishResponse(page, label, matches, action, timeout = 60000) {
-  let timer;
+/** 先监听再操作，避免快速响应丢失；页面关闭或操作结束后释放监听器。 */
+export async function runWithPublishResponse(page, label, matches, action) {
   let listener;
+  let onClose;
   const pending = new Promise((resolve, reject) => {
+    onClose = () => reject(new Error(`${label}等待结束：发布页面已关闭`));
     listener = async response => {
       try {
         if (await matches(response)) resolve(response);
@@ -14,7 +15,7 @@ export async function runWithPublishResponse(page, label, matches, action, timeo
       }
     };
     page.on("response", listener);
-    timer = setTimeout(() => reject(new Error(`${label}接口在${timeout / 1000}秒内未返回确认`)), timeout);
+    page.once("close", onClose);
   });
   try {
     const [response] = await Promise.all([pending, Promise.resolve().then(action)]);
@@ -31,8 +32,8 @@ export async function runWithPublishResponse(page, label, matches, action, timeo
       requestId: body.extra?.logid || body.ResponseMetadata?.RequestId, error: body.ResponseMetadata?.Error }));
     return { body, responseText, requestPath, httpStatus: response.status(), request: response.request() };
   } finally {
-    clearTimeout(timer);
     page.off("response", listener);
+    page.off("close", onClose);
   }
 }
 

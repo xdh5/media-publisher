@@ -17,7 +17,7 @@ export async function waitToutiaoArticleImagesReady(page, imageCount) {
     const source = image => new URL(image.currentSrc || image.src).pathname.split('~')[0];
     const bodySources = new Set(bodyImages.filter(ready).map(source));
     return bodySources.size === expected;
-  }, { timeout: 120000, polling: 250 }, imageCount).catch(async () => {
+  }, { timeout: 0, polling: 250 }, imageCount).catch(async () => {
     const state = await page.evaluate(() => ({
       bodyImages: [...document.querySelectorAll('.ProseMirror img')].map(image => ({ complete: image.complete, width: image.naturalWidth, sourceType: image.src.split(':')[0] })),
       coverImages: document.querySelectorAll('.article-cover-img-wrap img').length,
@@ -31,7 +31,7 @@ export async function waitToutiaoArticleImagesReady(page, imageCount) {
 export async function clickToutiaoText(page, text, clickCount = 1) {
   await page.waitForFunction(value => [...document.querySelectorAll("button,a,div,span,li")].some(element =>
     element.textContent.trim() === value && element.getBoundingClientRect().width > 0 && !element.disabled),
-  { timeout: 15000, polling: 100 }, text);
+  { timeout: 0, polling: 100 }, text);
   const handle = await page.evaluateHandle(value => [...document.querySelectorAll("button,a,div,span,li")].find(element =>
     element.textContent.trim() === value && (element.tagName === "BUTTON" || ![...element.children].some(child => child.textContent.trim() === value)) &&
     element.getBoundingClientRect().width > 0 && !element.disabled), text);
@@ -53,7 +53,7 @@ export async function setToutiaoCheckbox(page, label, checked) {
   }, label);
   if (state !== checked) await page.evaluate(text => document.querySelector(`[data-toutiao-option="${text}"]`).click(), label);
   await page.waitForFunction((text, value) => document.querySelector(`[data-toutiao-option="${text}"]`)
-    .classList.contains("byte-checkbox-checked") === value, { timeout: 10000, polling: 100 }, label, checked);
+    .classList.contains("byte-checkbox-checked") === value, { timeout: 0, polling: 100 }, label, checked);
 }
 
 function escapeText(text) {
@@ -73,7 +73,7 @@ export async function fillToutiaoArticle(page, manifestPath) {
     return result;
   }).join("");
   setPublishStage(page, "填写头条文章标题");
-  await page.waitForSelector('textarea[placeholder*="文章标题"]', { timeout: 30000 });
+  await page.waitForSelector('textarea[placeholder*="文章标题"]', { timeout: 0 });
   await page.evaluate(title => {
     const input = document.querySelector('textarea[placeholder*="文章标题"]');
     Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value").set.call(input, title);
@@ -106,5 +106,5 @@ export async function clearToutiaoEditor(page) {
     const editor = document.querySelector('.ProseMirror[contenteditable="true"]');
     return editor.querySelectorAll("img").length === 0 &&
       !editor.innerText.replace(/请输入正文|有什么新鲜事想告诉大家？/g, "").trim();
-  }, { timeout: 10000, polling: 100 });
+  }, { timeout: 0, polling: 100 });
 }

@@ -6,9 +6,9 @@ async function selectShipinhaoCalendarDay(page, publishAt) {
     month: Number(publishAt.month),
     day: publishAt.day,
   };
-  const deadline = Date.now() + 20000;
+
   let lastState = null;
-  while (Date.now() < deadline) {
+  while (!page.isClosed()) {
     const state = await page.evaluate((target) => {
       const visible = (node) => {
         if (!node || !node.getBoundingClientRect) return false;

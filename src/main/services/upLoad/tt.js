@@ -13,11 +13,7 @@ import {
   isCreativeStatementNone,
   resolveTtCreativeStatementLabel
 } from '../../../shared/creativeStatement.js'
-import {
-  WAIT_SELECTOR_APPEAR_MS,
-  WAIT_UPLOAD_PROCESSING_MS,
-  pollPageUntil
-} from './uploadTimeouts.js'
+import { pollPageUntil } from "./publishPageWait.js";
 import ttPublishMode from './ttPublishMode.js'
 
 // 头条「视频来源」勾选项支持的声明文案，未匹配则跳过不勾。
@@ -70,38 +66,21 @@ function getErrorMessage(error) {
 // 检测当前发布页是横屏视频：以「存草稿」按钮是否存在为准（竖屏无该按钮）。
 // 注意：该按钮通常在视频处理完成后才出现，调用时机要放在 progress 100% 之后。
 async function detectToutiaoHorizontal(page) {
-  try {
-    await page.waitForSelector(HORIZONTAL_DRAFT_SELECTOR, {
-      visible: true,
-      timeout: 3000
-    })
-    console.log('[tt] 检测到「存草稿」按钮，按横屏流程处理')
-    return true
-  } catch (_) {
-    console.log('[tt] 未检测到「存草稿」按钮，按竖屏流程处理')
-    return false
-  }
+  const button = await page.$(HORIZONTAL_DRAFT_SELECTOR)
+  return Boolean(button && await button.evaluate(element => element.getBoundingClientRect().width > 0))
 }
 
-async function tryClickOptional(page, selector, timeout = 1200) {
-  try {
-    const element = await page.waitForSelector(selector, {
-      visible: true,
-      timeout
-    })
-    await element.click({ delay: 200 })
-    return true
-  } catch (e) {
-    console.log(`头条可选按钮未出现，跳过 ${selector}`, getErrorMessage(e))
-    return false
-  }
+async function tryClickOptional(page, selector) {
+  const element = await page.$(selector)
+  if (!element || !await element.evaluate(node => node.getBoundingClientRect().width > 0)) return false
+  await element.click({ delay: 200 })
+  return true
 }
 
 async function clickReadyElement(
   page,
   selector,
-  label,
-  timeout = WAIT_SELECTOR_APPEAR_MS
+  label
 ) {
   await page.waitForFunction(
     sel => {
@@ -119,7 +98,7 @@ async function clickReadyElement(
         element.getAttribute('disabled') === null
       )
     },
-    { timeout },
+    { timeout: 0 },
     selector
   )
   const clicked = await page.evaluate(sel => {
@@ -208,11 +187,7 @@ async function waitForToutiaoPublishFooterReady(page) {
           const text = norm(el.textContent)
           return isReady(el) && (text === '发布' || text === '存草稿' || text === '保存草稿')
         })
-    },
-    WAIT_SELECTOR_APPEAR_MS,
-    1000,
-    '等待头条发布页脚按钮出现超时'
-  )
+    }, undefined, 1000)
 }
 
 async function clickToutiaoFooterAction(page, { draft }) {
@@ -267,16 +242,7 @@ async function setToutiaoCover(page, hasTagSelector, setPublishStage, systemCove
   const coverItemSelector = getToutiaoCoverItemSelector()
   // 新版头条不再让用户从系统封面里挑一张，弹窗一打开就能直接「下一步」。
   // 候选图使用业务指定的索引；新版无候选图时继续封面确认流程。
-  let coverItems = []
-  try {
-    await page.waitForSelector(coverItemSelector, {
-      visible: true,
-      timeout: 5000
-    })
-    coverItems = await page.$$(coverItemSelector)
-  } catch (_) {
-    /* 新版无候选图，跳过 */
-  }
+  const coverItems = await page.$$(coverItemSelector)
   if (coverItems.length) {
     if (!coverItems[systemCoverIndex]) throw new Error(`头条系统封面索引不存在：${systemCoverIndex}`)
     await coverItems[systemCoverIndex].evaluate(element => {
@@ -293,8 +259,7 @@ async function setToutiaoCover(page, hasTagSelector, setPublishStage, systemCove
   await clickReadyElement(
     page,
     'body .Dialog-container .m-poster-upgrade .footer .m-button.red, body .Dialog-container .m-poster-upgrade .footer .m-button, body .Dialog-container .footer .m-button.red',
-    '头条封面下一步按钮',
-    WAIT_SELECTOR_APPEAR_MS
+    '头条封面下一步按钮'
   )
   setPublishStage('确认系统封面')
   console.log('确认系统封面')
@@ -369,11 +334,7 @@ async function setToutiaoCover(page, hasTagSelector, setPublishStage, systemCove
             )
           ]
           return !coverDialogs.some(isVisible)
-        },
-        30000,
-        500,
-        '等待头条封面弹窗关闭超时'
-      )
+        }, undefined, 500)
       console.log('[tt] 封面弹窗已关闭，封面设置已生效')
     } catch (e) {
       await dumpCoverEditorState('cover-dialog-not-closed')
@@ -444,7 +405,7 @@ async function setToutiaoCover(page, hasTagSelector, setPublishStage, systemCove
     )
     console.log('[tt] 封面确认按钮点击成功')
   } catch (e) {
-    console.log('[tt] 封面确认按钮等待超时:', e?.message || e)
+    console.log('[tt] 封面确认按钮等待失败:', e?.message || e)
     await dumpCoverEditorState('btn-sure-fail')
     const uploaded = await isXiguaPosterUploaded()
     console.log('[tt] isXiguaPosterUploaded =', uploaded)
@@ -473,7 +434,7 @@ async function setToutiaoCover(page, hasTagSelector, setPublishStage, systemCove
     )
     console.log('[tt] 封面弹窗确认按钮点击成功')
   } catch (e) {
-    console.log('[tt] 封面弹窗确认按钮等待超时:', e?.message || e)
+    console.log('[tt] 封面弹窗确认按钮等待失败:', e?.message || e)
     await dumpCoverEditorState('dialog-red-fail')
     // 兜底：直接强点；如果弹窗已经被前面 btn-sure 关闭，这里点不到也无所谓。
     await forceClickIfExists(
@@ -488,11 +449,10 @@ async function setToutiaoCover(page, hasTagSelector, setPublishStage, systemCove
 }
 
 async function waitForToutiaoUploadProgressComplete(page) {
-  const deadline = Date.now() + WAIT_UPLOAD_PROCESSING_MS
   let lastLogValue = ''
   let lastLogAt = 0
   let missingProgressCount = 0
-  while (Date.now() < deadline) {
+  while (!page.isClosed()) {
     const progresses = await page
       .evaluate(() =>
         [...document.querySelectorAll('.progress-bar-inner')].map(bar => ({
@@ -549,8 +509,7 @@ async function waitForToutiaoUploadProgressComplete(page) {
     await page.waitForTimeout(1000)
   }
 
-  const err = new Error('等待头条上传进度到 100% 超时')
-  err.name = 'TimeoutError'
+  const err = new Error('发布页面已关闭，停止等待头条上传完成')
   throw err
 }
 
@@ -559,7 +518,7 @@ async function openToutiaoCoverDialog(page) {
   const dialogSelector = getToutiaoPosterDialogSelector()
   const trigger = await page.waitForSelector(triggerSelector, {
     visible: true,
-    timeout: WAIT_SELECTOR_APPEAR_MS
+    timeout: 0
   })
   await trigger.evaluate(element => {
     element.scrollIntoView({ block: 'center', inline: 'center' })
@@ -574,7 +533,7 @@ async function openToutiaoCoverDialog(page) {
   if (!clicked) throw new Error('未找到头条封面入口')
   await page.waitForSelector(dialogSelector, {
     visible: true,
-    timeout: WAIT_SELECTOR_APPEAR_MS
+    timeout: 0
   })
 }
 
@@ -607,7 +566,7 @@ export default async function (page, data, window, event) {
     ]
     const uploadSelector = UPLOAD_SELECTORS.join(', ')
     await page.waitForSelector(uploadSelector, {
-      timeout: 60 * 1000
+      timeout: 0
     })
     const uploadInputs = await page.$$(uploadSelector)
     if (!uploadInputs.length) throw new Error('未找到头条上传 input')
@@ -630,7 +589,7 @@ export default async function (page, data, window, event) {
       'input[placeholder*="字符"]'
     ]
     const titleSelector = TITLE_SELECTORS.join(', ')
-    await page.waitForSelector(titleSelector, { timeout: 60 * 1000 })
+    await page.waitForSelector(titleSelector, { timeout: 0 })
     const input = await page.$(titleSelector)
     if (!input) throw new Error('未找到头条标题输入框')
     await input.evaluate((element, value) => {
@@ -735,7 +694,7 @@ export default async function (page, data, window, event) {
     }
     if (!shouldSaveDraft && !isOfficialSchedule) {
       setPublishStage(page, '等待头条视频进入作品管理')
-      await page.waitForFunction(() => /\/profile_v4\/(xigua\/content-manage|manage\/content)/.test(location.pathname), { timeout: 60000 })
+      await page.waitForFunction(() => /\/profile_v4\/(xigua\/content-manage|manage\/content)/.test(location.pathname), { timeout: 0 })
     }
     console.log(
       shouldSaveDraft ? '✅ 头条号视频已保存草稿' : '✅ 头条号视频上传成功'

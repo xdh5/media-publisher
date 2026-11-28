@@ -77,6 +77,7 @@ async function hasAnySelector(page, selectors, visibleOnly = false) {
  * 上传控件出现才视为可发布；登录页或二维码出现则立即判定登录失效。
  */
 export async function probeRealPublishSession(page, platform, timeoutMs = 30000) {
+  if (timeoutMs === 0) return inspectPublishSession(page, platform, 0);
   let timer;
   try {
     return await Promise.race([
@@ -103,7 +104,7 @@ async function inspectPublishSession(page, platform, timeoutMs) {
   const readySelectors = READY_SELECTORS[platform];
   const loginSelectors = LOGIN_SELECTORS[platform] || [];
 
-  while (Date.now() < deadline) {
+  while (!page.isClosed() && (timeoutMs === 0 || Date.now() < deadline)) {
     const currentUrl = typeof page.url === "function" ? page.url() : "";
     if (isPlatformLoginUrl(platform, currentUrl)) {
       return {

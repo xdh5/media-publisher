@@ -7,13 +7,13 @@ import { submitToutiaoContent, uploadToutiaoImages } from "./ttApiResponses.js";
 export async function fillToutiaoMicro(page, manifest) {
   setPublishStage(page, "填写微头条摘要、话题和配图");
   if (!manifest.micro_text?.trim()) throw new Error("发布业务未指定微头条完整正文 micro_text");
-  await page.waitForSelector('.ProseMirror[contenteditable="true"]', { timeout: 30000 });
+  await page.waitForSelector('.ProseMirror[contenteditable="true"]', { timeout: 0 });
   await clearToutiaoEditor(page);
   setPublishStage(page, '清理微头条草稿残留配图');
   for (let count = await page.$$eval('.img-box-item', nodes => nodes.length); count > 0; count--) {
     await page.$eval('.img-box-item .image-remove-btn', element => element.click());
     await page.waitForFunction(expected => document.querySelectorAll('.img-box-item').length === expected,
-      { timeout: 10000, polling: 100 }, count - 1);
+      { timeout: 0, polling: 100 }, count - 1);
   }
   setPublishStage(page, '上传本期微头条配图');
   console.log('[微头条配图上传]', JSON.stringify({ imagePath: manifest.micro_image_path }));
@@ -33,7 +33,7 @@ export async function fillToutiaoMicro(page, manifest) {
     previewCount: document.querySelectorAll('.img-box-item').length,
   }))));
   // 配图预览使用本地blob；上传结果以接口为准，页面只核对已添加的图片数量。
-  await page.waitForFunction(() => /共\s*1\s*张/.test(document.body.innerText), { timeout: 60000, polling: 250 });
+  await page.waitForFunction(() => /共\s*1\s*张/.test(document.body.innerText), { timeout: 0, polling: 250 });
   setPublishStage(page, "设置微头条引用AI声明");
   await setToutiaoCheckbox(page, "引用AI", manifest.publish_options.quote_ai);
 }

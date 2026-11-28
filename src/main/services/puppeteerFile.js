@@ -9,7 +9,6 @@ import { prepareElectronPublishPage } from "./electronPublishPage.js";
 import { initializePublishProgress, setPublishStage, getPublishProgress } from "./publishStage.js";
 import { saveStalledPublishDiagnostics } from "./publishDiagnostics.js";
 import { createPublishTaskQueue } from "./publishTaskQueue.js";
-import { UPLOAD_WINDOW_AUTO_CLOSE_MS } from "./upLoad/uploadTimeouts.js";
 import { skipCloseConfirmation } from "./upLoad/closeWindow.js";
 import { applyAccountProxyForTask } from "./proxyConfig.js";
 import {
@@ -84,7 +83,6 @@ async function doUpload(data, transport, queueDone) {
   let finished = false;
   let activeBrowser = null;
   let activeWin = null;
-  let autoCloseTimer = null;
   let actionCheckTimer = null;
   let progressTimer = null;
   const retryDelay = 1000;
@@ -107,10 +105,6 @@ async function doUpload(data, transport, queueDone) {
     if (actionCheckTimer) {
       clearTimeout(actionCheckTimer);
       actionCheckTimer = null;
-    }
-    if (autoCloseTimer) {
-      clearTimeout(autoCloseTimer);
-      autoCloseTimer = null;
     }
     if (data.reuseSessionKey && !data.reuseSessionFinal) {
       reusablePublishSessions.set(data.reuseSessionKey, {
@@ -216,7 +210,9 @@ async function doUpload(data, transport, queueDone) {
         page = await pie.getPage(browser, win);
         reusablePublishSessions.delete(data.reuseSessionKey);
       } else {
-        browser = await pie.connect(app, puppeteer);
+        browser = await pie.connect(app, {
+          connect: options => puppeteer.connect({ ...options, protocolTimeout: 0 }),
+        });
         win = new BrowserWindow({
         show: isXhsTask
           ? true
@@ -251,6 +247,8 @@ async function doUpload(data, transport, queueDone) {
       }
       activeWin = win;
       activeBrowser = browser;
+      page.setDefaultTimeout(0);
+      page.setDefaultNavigationTimeout(0);
       initializePublishProgress(page, { platform: data.pt, account: data.phone, taskId: data.taskId, attempt: currentAttempt });
       let lastProgressAt = Date.now();
       let lastPageState = "";
@@ -357,18 +355,6 @@ async function doUpload(data, transport, queueDone) {
         }
       });
 
-      const AUTO_CLOSE_DELAY = UPLOAD_WINDOW_AUTO_CLOSE_MS;
-      if (!isXhsTask) {
-        autoCloseTimer = setTimeout(() => {
-          console.log(
-            `窗口 ${data.partition} 已自动关闭（${Math.round(
-              AUTO_CLOSE_DELAY / 60000
-            )} 分钟兜底超时）`
-          );
-          closePublishWinProgrammatically(win);
-        }, AUTO_CLOSE_DELAY);
-      }
-
       // 统一 UA：所有平台都强制设置 data.useragent。
       // 这一步很关键：账号管理里 <webview> 是用 ptConfig[pt].useragent（Chrome/138 桌面 UA）扫码登的，
       // 而 BrowserWindow 默认 UA 带 "Electron/x.x.x" 字样。如果发布时不改 UA，
@@ -399,17 +385,13 @@ async function doUpload(data, transport, queueDone) {
       if (isXhsTask || data.pt.indexOf("视频") !== -1) {
         await page.goto(data.url, {
           waitUntil: "domcontentloaded",
-          timeout: isXhsTask ? 120000 : 60000,
+          timeout: 0,
         });
       } else {
         await win.loadURL(data.url);
       }
 
       win.on("closed", () => {
-        if (autoCloseTimer) {
-          clearTimeout(autoCloseTimer);
-          autoCloseTimer = null;
-        }
         try {
           if (browser) browser.disconnect();
         } catch (_) {
@@ -471,7 +453,8 @@ async function doUpload(data, transport, queueDone) {
               setPublishStage(page, "核验真实发布页登录状态");
               const sessionProbe = await probeRealPublishSession(
                 page,
-                data.pt
+                data.pt,
+                0
               );
               if (!sessionProbe.ok) {
                 const supportsQrLogin =

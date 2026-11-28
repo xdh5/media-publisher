@@ -1,9 +1,7 @@
 "use strict";
 
-import { pollPageUntil } from "./uploadTimeouts.js";
+import { pollPageUntil } from "./publishPageWait.js";
 import { validateVideoProductId } from "../../../shared/videoProduct.js";
-
-const PRODUCT_ACTION_TIMEOUT_MS = 30 * 1000;
 
 function productError(code, message) {
   const error = new Error(message);
@@ -15,16 +13,15 @@ async function pollProductPageUntil(
   page,
   pageFn,
   pageArg,
-  timeoutMessage,
+  message,
   stepMs = 300
 ) {
-  const deadline = Date.now() + PRODUCT_ACTION_TIMEOUT_MS;
-  while (Date.now() < deadline) {
+  while (!page.isClosed()) {
     const ok = await page.evaluate(pageFn, pageArg).catch(() => false);
     if (ok) return;
     await page.waitForTimeout(stepMs);
   }
-  throw productError("product_action_timeout", timeoutMessage);
+  throw productError("publish_page_closed", message);
 }
 
 async function waitForProductDialog(page) {
@@ -38,11 +35,7 @@ async function waitForProductDialog(page) {
       ).some((dialog) =>
         String(dialog.textContent || "").includes("从橱窗添加商品")
       );
-    },
-    PRODUCT_ACTION_TIMEOUT_MS,
-    300,
-    "等待视频号商品弹窗超时"
-  );
+    }, undefined, 300);
 }
 
 async function openProductDialog(page) {
@@ -96,11 +89,7 @@ async function openProductDialog(page) {
                 String(item.textContent || "").replace(/\s+/g, "") === "商品"
             )
         );
-      },
-      PRODUCT_ACTION_TIMEOUT_MS,
-      200,
-      "链接类型菜单中未出现“商品”选项"
-    );
+      }, undefined, 200);
 
     const clicked = await page.evaluate(() => {
       const app = document.querySelector("wujie-app.wujie_iframe");
@@ -143,11 +132,7 @@ async function openProductDialog(page) {
           String(selected.textContent || "").trim() === "商品" &&
           chooser
       );
-    },
-    PRODUCT_ACTION_TIMEOUT_MS,
-    200,
-    "视频号商品选择框未出现"
-  );
+    }, undefined, 200);
 
   const openedDialog = await page.evaluate(() => {
     const app = document.querySelector("wujie-app.wujie_iframe");

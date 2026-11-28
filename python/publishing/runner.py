@@ -6,13 +6,11 @@ import json
 import os
 import re
 import shutil
-import signal
 import subprocess
 import sys
 import tempfile
 from pathlib import Path
 
-TIMEOUT_SECONDS = int(os.getenv("MEDIA_PUBLISHER_TIMEOUT_SECONDS", "14520"))
 
 
 def matrix_root() -> Path:
@@ -113,15 +111,7 @@ def _run_browser_publish(arguments: list[str], result_path: Path, *, execution_l
             start_new_session=os.name != "nt",
             creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
         )
-        try:
-            stdout, stderr = process.communicate(timeout=TIMEOUT_SECONDS)
-        except subprocess.TimeoutExpired:
-            if os.name == "nt":
-                subprocess.run(["taskkill", "/PID", str(process.pid), "/T", "/F"], capture_output=True, creationflags=subprocess.CREATE_NO_WINDOW)
-            else:
-                os.killpg(process.pid, signal.SIGKILL)
-            process.communicate()
-            raise RuntimeError("发布超时，已清理本次浏览器进程树；结果待核对，请检查平台作品管理后再重发")
+        stdout, stderr = process.communicate()
         result = subprocess.CompletedProcess(process.args, process.returncode, stdout, stderr)
     except (OSError, subprocess.SubprocessError) as exc:
         raise RuntimeError(f"运行 media-publisher CLI 失败：{exc}") from exc

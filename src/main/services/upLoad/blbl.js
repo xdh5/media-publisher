@@ -3,7 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import maybeClosePublishWindow from './closeWindow.js';
 import { getCreativeStatementOption, resolveBlblCreativeStatementLabel } from '../../../shared/creativeStatement.js';
-import { pollPageUntil, WAIT_SELECTOR_APPEAR_MS, WAIT_UPLOAD_PROCESSING_MS } from './uploadTimeouts.js';
+import { pollPageUntil } from "./publishPageWait.js";
 import { setOfficialSchedule } from './officialSchedule.js';
 import { waitBilibiliElement, selectBilibiliCategory, uploadBilibiliCover, generateBilibiliChapters, submitBilibiliVideo } from './bilibiliPublishing.js';
 
@@ -28,7 +28,7 @@ async function selectBlblCreativeStatement(page, data) {
     return;
   }
   await trigger.evaluate(e => e.click());
-  await pollPageUntil(page, () => !!document.querySelector('.statement-content .bcc-select-list-wrap'), 15000, 250, 'B站创作声明列表未打开');
+  await pollPageUntil(page, () => !!document.querySelector('.statement-content .bcc-select-list-wrap'), undefined, 250);
 
   const picked = await page.evaluate(
     (text, isAuthOption) => {
@@ -68,15 +68,15 @@ export default async function (page, data, window, event) {
     const options = data.publishOptions || {};
     const draft = data.publishMode === 'draft' || data.publishToDraft === true;
     setPublishStage(page, '等待B站视频上传控件');
-    const upload = await waitBilibiliElement(page, '.bcc-upload-wrapper input[type=file],.bcc-upload input[type=file]', 30000);
+    const upload = await waitBilibiliElement(page, '.bcc-upload-wrapper input[type=file],.bcc-upload input[type=file]');
     setPublishStage(page, '上传B站视频文件');
     await upload.uploadFile(path.resolve(data.filePath));
     console.log('[blbl] 开始等待视频上传完成');
     setPublishStage(page, '等待B站视频上传完成');
-    await pollPageUntil(page, () => !!document.querySelector('.file-item-content-status .success'), WAIT_UPLOAD_PROCESSING_MS, 1000, 'B站视频尚未上传完成');
+    await pollPageUntil(page, () => !!document.querySelector('.file-item-content-status .success'), undefined, 1000);
 
     setPublishStage(page, '填写B站稿件标题');
-    await waitBilibiliElement(page, 'input[placeholder="请输入稿件标题"]', 30000);
+    await waitBilibiliElement(page, 'input[placeholder="请输入稿件标题"]');
     await page.$eval('input[placeholder="请输入稿件标题"]', e => e.focus());
     await page.keyboard.down('Control');
     await page.keyboard.press('KeyA');
@@ -99,7 +99,7 @@ export default async function (page, data, window, event) {
     while (await page.$('.tag-container .label-item-v2-container .close')) {
       const count = await page.$$eval('.tag-container .label-item-v2-container', nodes => nodes.length);
       await page.$eval('.tag-container .label-item-v2-container .close', e => e.dispatchEvent(new MouseEvent('click', { bubbles: true })));
-      await page.waitForFunction(previous => document.querySelectorAll('.tag-container .label-item-v2-container').length < previous, { polling: 100, timeout: 5000 }, count);
+      await page.waitForFunction(previous => document.querySelectorAll('.tag-container .label-item-v2-container').length < previous, { polling: 100, timeout: 0 }, count);
     }
     const tags = String(data.data.bq || '').trim().split(/\s+/).filter(Boolean);
     for (const tag of tags) {
@@ -116,7 +116,7 @@ export default async function (page, data, window, event) {
     let result;
     if (draft) {
       await page.$eval('.submit-draft', e => e.click());
-      await page.waitForFunction(() => /草稿保存成功|保存成功/.test(document.body.innerText), { polling: 250, timeout: 30000 });
+      await page.waitForFunction(() => /草稿保存成功|保存成功/.test(document.body.innerText), { polling: 250, timeout: 0 });
       result = { draft: true };
     } else {
       result = await submitBilibiliVideo(page, data);

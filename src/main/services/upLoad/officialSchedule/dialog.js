@@ -88,10 +88,10 @@ async function inspectAndOpenScheduleDialog(page, platform, article = false) {
 export async function setDialogSchedule(page, platform, publishAt, article = false) {
   if (article) await page.waitForFunction(() => [...document.querySelectorAll("button")].some(node =>
     node.textContent.trim() === "定时发布" && !node.disabled && node.getBoundingClientRect().width > 0),
-  { timeout: 60000, polling: 250 });
+  { timeout: 0, polling: 250 });
   const trigger = await inspectAndOpenScheduleDialog(page, platform, article);
   console.log(`[${platform === "头条" ? "tt" : "bjh"}] 官方定时入口:`, JSON.stringify(trigger));
-  if (article) await page.waitForSelector(".common-timing-picker", { visible: true, timeout: 60000 });
+  if (article) await page.waitForSelector(".common-timing-picker", { visible: true, timeout: 0 });
   const firstModalOpened = await page.evaluate((platformName) => {
     const visible = (node) => {
       const style = window.getComputedStyle(node);

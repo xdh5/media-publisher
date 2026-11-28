@@ -9,10 +9,7 @@ import {
   resolveSphCreativeStatementLabel,
 } from "../../../shared/creativeStatement.js";
 import { attachSphVideoLink } from "./sphLink.js";
-import {
-  WAIT_SELECTOR_APPEAR_MS,
-  WAIT_UPLOAD_PROCESSING_MS,
-} from "./uploadTimeouts.js";
+
 import { setOfficialSchedule } from "./officialSchedule.js";
 
 /** 声明原创必须在上传完成后勾选，并核对页面状态。 */
@@ -26,7 +23,7 @@ async function declareSphOriginal(page) {
     if (!label) return false;
     label.click();
     return true;
-  }, { timeout: 15000, polling: 500 });
+  }, { timeout: 0, polling: 500 });
   await page.waitForFunction(() => {
     const root = document.querySelector("wujie-app.wujie_iframe")?.shadowRoot || document;
     const dialogs = [...root.querySelectorAll(".weui-desktop-dialog")]
@@ -42,7 +39,7 @@ async function declareSphOriginal(page) {
       return false;
     }
     return !!root.querySelector(".declare-original-checkbox input:checked, .declare-original-checkbox .ant-checkbox-checked");
-  }, { timeout: 30000, polling: 500 }).catch(() => {
+  }, { timeout: 0, polling: 500 }).catch(() => {
     throw new Error("视频号声明原创未完成勾选或确认，停止发表");
   });
   console.log("[sph] 声明原创已勾选并核验");
@@ -108,9 +105,8 @@ async function clickSphPublishButton(page) {
  * 同时记录可见提示和按钮，方便定位二次确认、字段校验或平台拦截。
  */
 async function waitSphPublishConfirmed(page) {
-  const deadline = Date.now() + 60 * 1000;
   let lastSnapshot = null;
-  while (Date.now() < deadline) {
+  while (!page.isClosed()) {
     await page.evaluate(() => {
       const root = document.querySelector("wujie-app.wujie_iframe")?.shadowRoot || document;
       const direct = [...root.querySelectorAll("button")].find(button =>
@@ -194,9 +190,8 @@ async function waitSphPublishConfirmed(page) {
  * 容易指向已失效或隐藏的旧节点，因此在 shadow DOM 内重新定位可见按钮并原生点击。
  */
 async function clickSphFormButton(page, label, action) {
-  const deadline = Date.now() + WAIT_SELECTOR_APPEAR_MS;
   let lastSnapshot = null;
-  while (Date.now() < deadline) {
+  while (!page.isClosed()) {
     const result = await page
       .evaluate((expectedAction) => {
         const app = document.querySelector("wujie-app.wujie_iframe");
@@ -265,7 +260,7 @@ async function clickSphFormButton(page, label, action) {
     await page.waitForTimeout(500);
   }
   throw new Error(
-    `等待视频号${label}按钮可点击超时：${JSON.stringify(lastSnapshot || {})}`
+    `发布页面已关闭，停止等待视频号${label}按钮：${JSON.stringify(lastSnapshot || {})}`
   );
 }
 
@@ -315,7 +310,7 @@ async function ensureSphFileSelected(page, filePath, attempts = 3) {
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
     try {
       const input = await page.waitForSelector(SEL_SPH_FILE_INPUT, {
-        timeout: WAIT_SELECTOR_APPEAR_MS,
+        timeout: 0,
       });
       if (!input) throw new Error("上传 input 不存在");
       await input.uploadFile(filePath);
@@ -339,11 +334,8 @@ async function ensureSphFileSelected(page, filePath, attempts = 3) {
 
 async function waitSphUploadProcessing(page) {
   setPublishStage(page, "等待视频号视频上传和平台处理完成");
-  const deadline = Date.now() + WAIT_UPLOAD_PROCESSING_MS;
   let lastProgress = "";
-  let lastProgressAt = Date.now();
-  while (Date.now() < deadline) {
-    if (page.isClosed()) throw new Error("视频号发布页面已关闭，停止等待");
+  while (!page.isClosed()) {
     const state = await page.evaluate(() => {
       const app = document.querySelector("wujie-app.wujie_iframe");
       const root = app?.shadowRoot || document;
@@ -374,7 +366,6 @@ async function waitSphUploadProcessing(page) {
         done: !processing && (percentage === null || percentage >= 100) &&
           Boolean(publishGroup && publishGroup.querySelector("button,[role='button']")),
         progress: percentage === null ? "平台处理中" : `${percentage}%`,
-        stallMs: 10 * 60 * 1000,
       };
     });
     if (state.done) {
@@ -383,15 +374,11 @@ async function waitSphUploadProcessing(page) {
     }
     if (state.progress !== lastProgress) {
       lastProgress = state.progress;
-      lastProgressAt = Date.now();
       console.log(`[sph] 上传处理进度：${state.progress}`);
-    }
-    if (Date.now() - lastProgressAt >= state.stallMs) {
-      throw new Error(`视频号上传处理停滞：${state.progress} 持续 ${Math.round(state.stallMs / 1000)} 秒无变化，尚未提交`);
     }
     await page.waitForTimeout(2000);
   }
-  throw new Error("等待视频处理超时（上传提示或进度条一直未结束）");
+  throw new Error("视频号发布页面已关闭，停止等待");
 }
 
 /** 沿用项目原有的点击输入框 + keyboard.type 文案填写方式。 */
@@ -399,7 +386,7 @@ async function fillSphTextAsBefore(page, description, shortTitle, fields = {}) {
   if (fields.description !== false) {
     const titleInput = await page.waitForSelector(
       "wujie-app.wujie_iframe >>> .post-desc-box .input-editor",
-      { timeout: WAIT_SELECTOR_APPEAR_MS }
+      { timeout: 0 }
     );
     if (!titleInput) throw new Error("未找到视频号描述输入框");
     await page.evaluate(() => {
@@ -418,7 +405,7 @@ async function fillSphTextAsBefore(page, description, shortTitle, fields = {}) {
   if (fields.shortTitle !== false) {
     const shortTitleInput = await page.waitForSelector(
       'wujie-app.wujie_iframe >>> input[placeholder="填写短标题有机会获得更多流量"]',
-      { timeout: WAIT_SELECTOR_APPEAR_MS }
+      { timeout: 0 }
     );
     if (!shortTitleInput) throw new Error("未找到视频号短标题输入框");
     await page.evaluate(() => {

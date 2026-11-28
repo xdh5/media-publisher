@@ -3,7 +3,7 @@ import path from "path";
 import fs from "fs";
 import os from "os";
 import crypto from "crypto";
-import { pollPageUntil } from "./uploadTimeouts.js";
+import { pollPageUntil } from "./publishPageWait.js";
 import { runWithDyResponse, requireDySuccess } from "./dyApiResponses.js";
 
 async function prepareCover(page, filename, portrait) {
@@ -47,7 +47,7 @@ export async function generateDyChapters(page) {
   setPublishStage(page, "打开抖音智能章节编辑器");
   await clickText(page, "为进度条增加章节信息，让视频结构更清晰", "p");
   await page.waitForFunction(() => [...document.querySelectorAll("button")]
-    .some(node => node.textContent.replace(/\s+/g, "") === "智能生成"), { timeout: 15000, polling: 100 });
+    .some(node => node.textContent.replace(/\s+/g, "") === "智能生成"), { timeout: 0, polling: 100 });
   const completed = await runWithDyResponse(page, "智能章节推荐结果", async response => {
     if (new URL(response.url()).pathname !== "/aweme/v1/chapter/recommend/get") return false;
     if (!response.ok()) return true;
@@ -59,7 +59,7 @@ export async function generateDyChapters(page) {
     () => clickText(page, "智能生成"));
     requireDySuccess(started, "启动智能章节生成");
     setPublishStage(page, "等待抖音智能章节推荐接口返回");
-  }, 600000);
+  });
   const body = requireDySuccess(completed, "智能章节推荐结果");
   console.log(`[dy] 推荐接口已返回${body.chapter_list.length}章，等待页面允许保存`);
   setPublishStage(page, "将抖音智能章节推荐结果填入编辑器");
@@ -76,7 +76,7 @@ export async function generateDyChapters(page) {
       node.getBoundingClientRect().width > 0 && node.textContent.includes("章节要点"));
     return !!dialog && /章节数[：:]?\s*[1-9]\d*/.test(dialog.innerText) &&
       [...dialog.querySelectorAll("button")].some(node => node.textContent.trim() === "保存" && !node.disabled);
-  }, 120000, 250, "抖音推荐章节尚未填入编辑器或保存按钮不可用，未提交作品");
+  }, undefined, 250);
   console.log("[抖音章节编辑器就绪]", JSON.stringify(await page.evaluate(() => ({
     chapterCount: Number(document.body.innerText.match(/章节数[：:]?\s*(\d+)/)?.[1] || 0),
     saveEnabled: [...document.querySelectorAll("button")].some(node => node.textContent.trim() === "保存" &&
@@ -86,7 +86,7 @@ export async function generateDyChapters(page) {
   setPublishStage(page, "保存抖音智能章节并等待编辑器关闭");
   console.log("[dy] 已点击章节保存，等待编辑器关闭");
   await page.waitForFunction(() => ![...document.querySelectorAll("button")].some(node =>
-    node.textContent.replace(/\s+/g, "") === "智能生成" && node.getBoundingClientRect().width > 0), { timeout: 15000, polling: 100 });
+    node.textContent.replace(/\s+/g, "") === "智能生成" && node.getBoundingClientRect().width > 0), { timeout: 0, polling: 100 });
   console.log(`[dy] 智能章节已生成并保存：${body.chapter_list.length}章`);
   return { count: body.chapter_list.length, requestPath: "/aweme/v1/chapter/recommend/get", statusCode: body.status_code };
 
@@ -100,7 +100,7 @@ async function uploadCoverImage(page, filename) {
     const url = new URL(response.url());
     return ["imagex.bytedanceapi.com", "open.bytedanceapi.com"].includes(url.hostname) &&
       url.searchParams.get("Action") === "CommitImageUpload" && response.request().method() === "POST";
-  }, () => input.uploadFile(path.resolve(filename)), 600000);
+  }, () => input.uploadFile(path.resolve(filename)));
   const error = receipt.body.ResponseMetadata.Error;
   if (error) throw new Error(`封面图片上传失败：${error.Code}，${error.Message}`);
   const uploaded = receipt.body.Result.Results;
@@ -123,7 +123,7 @@ export async function uploadDyCovers(page, landscape, portrait) {
     await page.evaluate(position => {
       document.querySelectorAll('[class^="coverControl-"] [class^="cover-"]:not([class^="cover-tip-"])')[position].click();
     }, index);
-    await page.waitForSelector("input.semi-upload-hidden-input", { timeout: 15000 });
+    await page.waitForSelector("input.semi-upload-hidden-input", { timeout: 0 });
     setPublishStage(page, index === 0 ? "上传抖音横版封面图片" : "上传抖音竖版封面图片");
     const receipt = await uploadCoverImage(page, files[index]);
     receipts.push({ orientation: index === 0 ? "landscape" : "portrait", ...receipt });
@@ -134,7 +134,7 @@ export async function uploadDyCovers(page, landscape, portrait) {
       const guide = [...document.querySelectorAll("button, [role='button'], span")].find(node => node.textContent.trim() === "暂不设置" && node.getBoundingClientRect().width > 0);
       if (guide) guide.click();
       return !buttons.some(node => node.textContent.trim() === "完成" && node.getBoundingClientRect().width > 0);
-    }, 60000, 250, "抖音封面编辑器尚未关闭");
+    }, undefined, 250);
   }
   console.log("[dy] 自定义封面已上传并保存");
   return receipts;

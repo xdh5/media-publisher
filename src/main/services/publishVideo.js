@@ -4,7 +4,6 @@ import path from "path";
 import { normalizeCreativeStatement } from "../../shared/creativeStatement.js";
 import ptConfig from "../config/ptConfig";
 import { runPuppeteerTask } from "./puppeteerFile";
-import { CLI_PUBLISH_TIMEOUT_MS } from "./upLoad/uploadTimeouts.js";
 import {
   isRemotePublishFile,
   resolvePublishFile,
@@ -182,7 +181,6 @@ async function runSingleFilePublishInner(
     const finish = (result) => {
       if (settled) return;
       settled = true;
-      clearTimeout(timer);
       if (typeof options.onDone === "function") {
         try {
           options.onDone(result);
@@ -193,13 +191,7 @@ async function runSingleFilePublishInner(
       if (waitForResult) resolve(result);
     };
 
-    const timer = setTimeout(() => {
-      const min = Math.round(CLI_PUBLISH_TIMEOUT_MS / 60000);
-      const message = `发布超时（${min} 分钟），请检查网络或登录态`;
-      console.error(message);
-      updateRecord("failed", message);
-      finish({ exitCode: 1, status: "failed", message, id: recordId });
-    }, CLI_PUBLISH_TIMEOUT_MS);
+
 
     const transport = {
       reply(channel, payload) {
