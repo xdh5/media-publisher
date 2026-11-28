@@ -188,12 +188,6 @@ export async function runSphCliLogin({
     console.warn("[sph-cli-login] 应用代理失败:", proxyErr && proxyErr.message);
   }
 
-  // 记住旧 sessionid，检测到新值后再验证真实发布页。
-  const oldSessionId = await getSphSessionId(part);
-  if (oldSessionId) {
-    console.log("[sph-cli-login] 检测到旧 sessionid，将等待新的登录会话");
-  }
-
   const useTerminalQr = Boolean(terminalQr && process.stdout.isTTY);
   if (terminalQr && !process.stdout.isTTY) {
     console.warn(
@@ -391,8 +385,7 @@ export async function runSphCliLogin({
         getSphSessionId(part)
           .then(async (newId) => {
             if (!newId || settled) return;
-            // 无旧值 → 新出现即可；有旧值 → 必须不同
-            if (!oldSessionId || newId !== oldSessionId) {
+            {
               verifying = true;
               try {
                 await piePage.goto(cfg.upload, { waitUntil: "domcontentloaded", timeout: 30000 });

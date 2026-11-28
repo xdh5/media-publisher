@@ -30,7 +30,7 @@ export async function readWechatAccountProfile(page) {
   if (response.httpStatus === 401 || rejectedOnLoginPage || /未登录|未登陆|登录.*(失效|过期)|登陆.*(失效|过期)|not.?login|login.?expired/i.test(response.errMsg || "")) {
     return { ok: false, loginRequired: true, reason: "视频号个人信息接口确认未登录，请重新扫码登录", currentUrl };
   }
-  if (response.httpStatus !== 200 || response.errCode !== 0) {
+  if (response.httpStatus < 200 || response.httpStatus >= 300 || response.errCode !== 0) {
     return { ok: false, loginRequired: false, reason: `视频号个人信息接口检测异常：HTTP ${response.httpStatus}，业务码 ${response.errCode}，${response.errMsg || "无错误说明"}`, currentUrl };
   }
   if (typeof response.finderUsername !== "string" || !response.finderUsername.trim()) {
