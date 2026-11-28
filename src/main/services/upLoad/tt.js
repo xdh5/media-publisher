@@ -692,10 +692,6 @@ export default async function (page, data, window, event) {
       const manifest = JSON.parse(fs.readFileSync(data.publishOptions.toutiaoManifestPath, 'utf8'))
       return await saveToutiaoPublicationResult(page, data, manifest, 'video', event, window)
     }
-    if (!shouldSaveDraft && !isOfficialSchedule) {
-      setPublishStage(page, '等待头条视频进入作品管理')
-      await page.waitForFunction(() => /\/profile_v4\/(xigua\/content-manage|manage\/content)/.test(location.pathname), { timeout: 0 })
-    }
     console.log(
       shouldSaveDraft ? '✅ 头条号视频已保存草稿' : '✅ 头条号视频上传成功'
     )

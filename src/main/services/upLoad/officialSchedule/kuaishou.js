@@ -274,6 +274,7 @@ export async function setKuaishouSchedule(page, publishAt) {
 
 export async function clickKuaishouScheduleConfirmation(page) {
   while (!page.isClosed()) {
+    if (page.url().includes("/article/manage/video")) return false;
     const clicked = await page.evaluate(() => {
       const norm = (text) => String(text || "").replace(/\s+/g, "").trim();
       const visible = (el) => {

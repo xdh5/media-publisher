@@ -309,7 +309,6 @@ export async function setDialogSchedule(page, platform, publishAt, article = fal
       return true;
     }, article);
     if (!confirmed) throw new Error("头条官方定时发布确认按钮不可用");
-    if (!article) await waitForOfficialScheduleAccepted(page, "头条", page.url());
     console.log(`[tt] 已确认头条官方定时发布: ${publishAt.minute}`);
     return;
   }

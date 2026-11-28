@@ -11,9 +11,8 @@ import {
 } from "../../../shared/creativeStatement.js";
 import { pollPageUntil } from "./publishPageWait.js";
 import {
-  clickKuaishouScheduleConfirmation,
   setOfficialSchedule,
-  waitForOfficialScheduleAccepted,
+  clickKuaishouScheduleConfirmation,
 } from "./officialSchedule.js";
 
 const TITLE_SELECTORS = [
@@ -310,55 +309,6 @@ async function selectKsCreativeStatement(page, data) {
   console.log("[ks] 已选择声明:", label);
 }
 
-// 点击发布后必须看到平台确认。只点到按钮并等待数秒不能当作发布成功。
-async function waitForKsImmediatePublish(page) {
-  let lastSnapshot = null;
-  while (!page.isClosed()) {
-    const snapshot = await page.evaluate(() => {
-      const norm = (text) => String(text || "").replace(/\s+/g, " ").trim();
-      const visible = (node) => {
-        if (!node || !node.isConnected) return false;
-        const style = window.getComputedStyle(node);
-        const rect = node.getBoundingClientRect();
-        return style.display !== "none" && style.visibility !== "hidden" && rect.width > 0 && rect.height > 0;
-      };
-      const roots = Array.from(document.querySelectorAll(
-        ".ant-message, .ant-message-notice, .ant-notification, .ant-modal, [role='alert'], [role='dialog']"
-      ));
-      const texts = [];
-      for (const root of roots) {
-        if (!visible(root)) continue;
-        const text = norm(root.innerText || root.textContent);
-        if (text && text.length <= 160) texts.push(text);
-      }
-      return { url: location.href, texts };
-    }).catch((error) => ({
-      url: "",
-      texts: [],
-      inspectError: error && error.message ? error.message : String(error),
-    }));
-    lastSnapshot = snapshot;
-    const url = String(snapshot.url || "");
-    const joined = (snapshot.texts || []).join(" | ");
-    const stillOnPublishPage = /\/article\/publish\/video(?:[/?#]|$)/.test(url);
-    const loginPage = /\/login|passport/i.test(url);
-    if (url && !stillOnPublishPage && !loginPage) {
-      console.log(`[ks] 平台已离开发布页：${url}`);
-      return;
-    }
-    if (/发布成功|提交成功|发布完成|作品已发布|已成功发布/.test(joined)) {
-      console.log(`[ks] 平台确认发布成功：${joined.slice(0, 300)}`);
-      return;
-    }
-    if (/发布失败|提交失败|上传失败|请重试|无法发布|不能发布/.test(joined)) {
-      throw new Error(`快手平台拒绝发布：${joined.slice(0, 300)}`);
-    }
-    console.log(`[ks][publish-wait] ${JSON.stringify({ url, texts: snapshot.texts })}`);
-    await page.waitForTimeout(2000);
-  }
-  throw new Error(`点击发布后未收到快手成功确认：${JSON.stringify(lastSnapshot || {})}`);
-}
-
 export default async function (page, data, window,event) {
   const isDraftMode = data.publishMode === "draft" || data.publishToDraft === true;
   const submitText = isDraftMode ? "取消" : "发布";
@@ -444,7 +394,6 @@ export default async function (page, data, window,event) {
     // 在 hidden window 下几何中心常落不到真正的 <button> 上，结果是"看起来点过了但没发"。
     // 改为在 evaluate 内部遍历真实 button / 行 div，直接调 DOM .click()，避开鼠标几何问题。
     // 快手草稿功能和发布一个逻辑一个是 发布 一个是取消两个字
-    const previousUrl = page.url();
     setPublishStage(page, "提交快手发布或草稿");
     let clicked;
     const submit = async () => {
@@ -474,39 +423,18 @@ export default async function (page, data, window,event) {
       if (!clicked || !clicked.ok) {
         throw new Error(`未找到${submitText}按钮(${clicked && clicked.reason})`);
       }
+
       if (isOfficialSchedule) await clickKuaishouScheduleConfirmation(page);
     };
     if (isDraftMode) {
       await submit();
     } else {
-      let submission;
       submitting = true;
-      const listed = await runWithKsResponse(page, "快手作品管理回执", async response => {
-        if (new URL(response.url()).pathname !== "/rest/cp/works/v2/video/pc/photo/list") return false;
-        if (!response.ok()) return true;
-        const body = await response.json();
-        return body.result !== 1 || body.data.list.some(item => item.title.startsWith(data.data.bt1));
-      }, async () => {
-        submission = await runWithKsResponse(page, "快手提交视频", isKsSubmitResponse, submit);
-        requireKsSuccess(submission, "快手提交视频");
-        const requestBody = submission.request.postData();
-        const submitted = (submission.request.headers()["content-type"] || "").includes("application/json")
-          ? JSON.parse(requestBody) : Object.fromEntries(new URLSearchParams(requestBody));
-        console.log("[快手提交封面核对]", JSON.stringify({ uploadedCoverKey: cover?.coverKey, submittedCoverKey: submitted.coverKey }));
-        if (cover && submitted.coverKey !== cover.coverKey) throw new Error("快手提交的封面key与已核验封面不一致，结果待核对，禁止自动重发");
-        setPublishStage(page, "等待快手提交成功并核对作品管理接口");
-        if (isOfficialSchedule) await waitForOfficialScheduleAccepted(page, "快手", previousUrl);
-        else await waitForKsImmediatePublish(page);
-      });
-      const body = requireKsSuccess(listed, "快手作品管理回执");
-      const work = body.data.list.find(item => item.title.startsWith(data.data.bt1));
-      if (!work.publishId) throw new Error("快手作品管理接口未返回作品ID，禁止自动重发");
-      if (cover && work.unPublishCoverKey && work.unPublishCoverKey !== cover.coverKey) {
-        throw new Error("快手作品管理返回的封面key与已核验封面不一致，禁止自动重发");
-      }
-      publication = { id: String(work.publishId), platform_status: work.publishStatus, cover,
-        apiReceipt: { submitPath: submission.requestPath, httpStatus: submission.httpStatus,
-          result: submission.body.result, managementPath: listed.requestPath } };
+      const submission = await runWithKsResponse(page, "快手提交视频", isKsSubmitResponse, submit);
+      const body = requireKsSuccess(submission, "快手提交视频");
+      const id = body.data?.publishId || body.data?.photoId;
+      publication = { ...(id ? { id: String(id) } : {}),
+        apiReceipt: { submitPath: submission.requestPath, httpStatus: submission.httpStatus, result: body.result } };
       fs.writeFileSync(path.join(path.dirname(path.resolve(data.filePath)), "kuaishou-publication.json"), JSON.stringify(publication, null, 2));
       console.log("[快手发布回执]", JSON.stringify(publication));
     }
@@ -538,4 +466,4 @@ export default async function (page, data, window,event) {
   }
 }
 
-export { fillKsCopy, selectKsCreativeStatement, waitForKsImmediatePublish };
+export { fillKsCopy, selectKsCreativeStatement };

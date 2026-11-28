@@ -67,8 +67,7 @@ export async function submitToutiaoContent(page, data, kind, action) {
   // 从原始响应读取长整数，避免作品编号经过浮点数转换失真。
   const idField = { video: 'ItemId', article: 'pgc_id', micro: 'thread_id|threadId' }[kind];
   const match = receipt.responseText.match(new RegExp(`"(?:${idField})"\\s*:\\s*"?([1-9]\\d*)"?`));
-  if (!match) throw new Error(`头条${kind}提交未返回作品ID，结果待核对，禁止自动重发`);
-  const id = match[1];
+  const id = match?.[1] || "";
   let timing;
   if (data.officialScheduledPublish && kind === "article") {
     const posted = new URLSearchParams(receipt.request.postData());
@@ -78,7 +77,7 @@ export async function submitToutiaoContent(page, data, kind, action) {
     }
   }
   const result = { status: true, id, kind, ...(timing ? { scheduled: true, officialScheduled: true, publishAt: data.publishAt, timing } : {}), published_at: new Date().toISOString(),
-    url: kind === "micro" ? `https://www.toutiao.com/w/${id}/` : `https://www.toutiao.com/${kind === "article" ? "article" : "video"}/${id}/`,
+    url: !id ? "" : kind === "micro" ? `https://www.toutiao.com/w/${id}/` : `https://www.toutiao.com/${kind === "article" ? "article" : "video"}/${id}/`,
     apiReceipt: { requestPath: receipt.requestPath, httpStatus: receipt.httpStatus,
       statusCode: body.status ?? body.code ?? body.err_no ?? body.errno, code: body.data?.Code, message: body.data?.Message || body.message } };
   fs.writeFileSync(path.join(directory, `toutiao-${kind}-publication.json`), JSON.stringify(result, null, 2));

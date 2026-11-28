@@ -18,7 +18,8 @@ export async function runWithPublishResponse(page, label, matches, action) {
     page.once("close", onClose);
   });
   try {
-    const [response] = await Promise.all([pending, Promise.resolve().then(action)]);
+    const operation = Promise.resolve().then(action);
+    const response = await Promise.race([pending, operation.then(() => pending)]);
     const url = new URL(response.url());
     const actionName = url.searchParams.get('Action') || url.searchParams.get('action');
     const requestPath = url.pathname + (actionName ? `?Action=${actionName}` : "");

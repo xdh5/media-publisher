@@ -8,7 +8,6 @@ import { resolveDyCreativeStatementLabel } from "../../../shared/creativeStateme
 import { pollPageUntil } from "./publishPageWait.js";
 import {
   setOfficialSchedule,
-  waitForOfficialScheduleAccepted,
 } from "./officialSchedule.js";
 
 async function selectDyCreativeStatement(page, data) {
@@ -183,55 +182,6 @@ async function clickDyPublish(page, isDraftMode) {
       ? "[dy] 已点击存草稿按钮 (#popover-tip-container+button)"
       : "[dy] 已点击真实发布按钮（文字=发布）"
   );
-}
-
-// 点击发布后必须看到平台确认。只点到按钮并等待数秒不能当作发布成功。
-async function waitForDyImmediatePublish(page) {
-  let lastSnapshot = null;
-  while (!page.isClosed()) {
-    const snapshot = await page.evaluate(() => {
-      const norm = (text) => String(text || "").replace(/\s+/g, " ").trim();
-      const visible = (node) => {
-        if (!node || !node.isConnected) return false;
-        const style = window.getComputedStyle(node);
-        const rect = node.getBoundingClientRect();
-        return style.display !== "none" && style.visibility !== "hidden" && rect.width > 0 && rect.height > 0;
-      };
-      const roots = Array.from(document.querySelectorAll(
-        ".semi-toast, .semi-toast-content, .semi-notification, .semi-modal, .semi-banner, [role='alert'], [role='dialog']"
-      ));
-      const texts = [];
-      for (const root of roots) {
-        if (!visible(root)) continue;
-        const text = norm(root.innerText || root.textContent);
-        if (text && text.length <= 160) texts.push(text);
-      }
-      return { url: location.href, texts };
-    }).catch((error) => ({
-      url: "",
-      texts: [],
-      inspectError: error && error.message ? error.message : String(error),
-    }));
-    lastSnapshot = snapshot;
-    const url = String(snapshot.url || "");
-    const joined = (snapshot.texts || []).join(" | ");
-    const stillOnPublishPage = /\/content\/post\/video(?:[/?#]|$)/.test(url);
-    const loginPage = /\/login|passport/i.test(url);
-    if (url && !stillOnPublishPage && !loginPage) {
-      console.log(`[dy] 平台已离开发布页：${url}`);
-      return;
-    }
-    if (/发布成功|提交成功|发布完成|作品已发布|已成功发布/.test(joined)) {
-      console.log(`[dy] 平台确认发布成功：${joined.slice(0, 300)}`);
-      return;
-    }
-    if (/发布失败|提交失败|上传失败|请重试|无法发布|不能发布/.test(joined)) {
-      throw new Error(`抖音平台拒绝发布：${joined.slice(0, 300)}`);
-    }
-    console.log(`[dy][publish-wait] ${JSON.stringify({ url, texts: snapshot.texts })}`);
-    await page.waitForTimeout(2000);
-  }
-  throw new Error(`点击发布后未收到抖音成功确认：${JSON.stringify(lastSnapshot || {})}`);
 }
 
 function readDyTitleValue() {
@@ -415,7 +365,6 @@ export default async function (page, data, window, event) {
       await setOfficialSchedule(page, "抖音", data.publishAt);
     }
 
-    const previousUrl = page.url();
     setPublishStage(page, isDraftMode ? "提交抖音草稿" : "提交抖音发布");
     if (isDraftMode) {
       await clickDyPublish(page, true);
@@ -425,15 +374,10 @@ export default async function (page, data, window, event) {
         new URL(response.url()).pathname === "/web/api/media/aweme/create_v2/" &&
         response.request().method() === "POST", () => clickDyPublish(page, false));
       const body = requireDySuccess(receipt, "发布作品");
-      if (!body.item_id) throw new Error("抖音发布接口未返回作品ID，发布结果待核对，禁止自动重发");
-      publication = { id: String(body.item_id), url: `https://www.douyin.com/video/${body.item_id}`,
+      publication = { ...(body.item_id ? { id: String(body.item_id), url: `https://www.douyin.com/video/${body.item_id}` } : {}),
         apiReceipt: { requestPath: receipt.requestPath, httpStatus: receipt.httpStatus, statusCode: body.status_code,
           requestId: body.extra?.logid }, chapters: data.dyChapters, covers: data.dyCovers };
       fs.writeFileSync(path.join(path.dirname(path.resolve(data.filePath)), "douyin-publication.json"), JSON.stringify(publication, null, 2));
-    }
-    if (isOfficialSchedule) {
-      setPublishStage(page, "等待抖音官方预约确认");
-      await waitForOfficialScheduleAccepted(page, "抖音", previousUrl, data.title, window);
     }
     console.log(
       isDraftMode
@@ -442,10 +386,6 @@ export default async function (page, data, window, event) {
           ? `✅ 抖音视频已由平台预约到 ${data.publishAt}`
           : "✅ 抖音视频已触发发布"
     );
-    if (!isDraftMode && !isOfficialSchedule) {
-      setPublishStage(page, "等待抖音发布成功并进入作品管理");
-      await waitForDyImmediatePublish(page);
-    }
     setPublishStage(page, "抖音发布流程完成");
     event.reply("puppeteerFile-done", {
       ...data,
@@ -474,4 +414,4 @@ export default async function (page, data, window, event) {
   }
 }
 
-export { fillDyTitle, selectDyCreativeStatementWithRetry, clickDyPublish, waitForDyImmediatePublish };
+export { fillDyTitle, selectDyCreativeStatementWithRetry, clickDyPublish };

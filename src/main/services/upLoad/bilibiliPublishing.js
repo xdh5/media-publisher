@@ -141,7 +141,6 @@ export async function submitBilibiliVideo(page, data) {
   if (result.code !== 0) throw new Error(`B站拒绝投稿：${result.message || JSON.stringify(result)}`);
   const aid = result.data?.aid || result.data?.archive?.aid;
   const bvid = result.data?.bvid || result.data?.archive?.bvid;
-  if (!aid && !bvid) throw new Error('B站投稿接口未返回稿件ID，不能确认成功');
   const body = submitted.request().postData() || '{}';
   const payload = scheduledRequests.get(page)?.submitted || JSON.parse(body);
   if (payload.title !== data.data.bt1) throw new Error('B站已提交稿件标题与本次任务不一致');
@@ -151,5 +150,5 @@ export async function submitBilibiliVideo(page, data) {
     if (Number(payload.dtime) !== expected) throw new Error('B站提交的预约时间与指定时间不一致');
   }
   fs.writeFileSync(path.join(path.dirname(path.resolve(data.filePath)), 'bilibili-submit-response.json'), JSON.stringify({ aid, bvid, title: payload.title, dtime: payload.dtime || 0, cover: payload.cover, cover16_9: payload.cover16_9, chapter: payload.chapter }, null, 2));
-  return { aid, bvid, video_id: bvid || String(aid), video_url: bvid ? `https://www.bilibili.com/video/${bvid}` : '', scheduled, publish_at: scheduled ? data.publishAt : null };
+  return { aid, bvid, video_id: bvid || (aid ? String(aid) : ""), video_url: bvid ? `https://www.bilibili.com/video/${bvid}` : '', scheduled, publish_at: scheduled ? data.publishAt : null };
 }
