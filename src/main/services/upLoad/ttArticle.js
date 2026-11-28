@@ -75,8 +75,11 @@ export async function publishToutiaoArticle(page, data, window, event) {
   if (preview && !scheduled) {
     previewReceipt = await runPreview(() => clickToutiaoText(page, "预览并发布"));
   }
-  if (scheduled && previewReceipt.body.code !== 0) {
-    throw new Error(`头条文章预约预览失败：${previewReceipt.body.message || previewReceipt.body.code}，未执行正式发布`);
+  if (previewReceipt && ![0, 7050].includes(previewReceipt.body.code)) {
+    throw new Error(`头条文章预览失败：${previewReceipt.body.message || previewReceipt.body.code}，未执行正式发布`);
+  }
+  if (previewReceipt?.body.code === 7050) {
+    console.log('[头条文章预览] 忽略预览保存失败7050，继续确认发布，等待正式提交回执');
   }
   if (scheduled || preview) await page.waitForFunction(() => [...document.querySelectorAll('button')].some(element =>
     element.textContent.trim() === "确认发布" && !element.disabled && element.getBoundingClientRect().width > 0),

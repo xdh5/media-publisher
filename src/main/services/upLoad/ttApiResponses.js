@@ -8,6 +8,35 @@ const submitPaths = {
   micro: "/mp/agw/article/wtt",
 };
 
+async function confirmScheduledToutiaoArticle(page, data, action) {
+  await page.setRequestInterception(true);
+  let requestListener;
+  const submitted = new Promise((resolve, reject) => {
+    requestListener = request => {
+      const article = request.method() === 'POST' && new URL(request.url()).pathname === submitPaths.article;
+      const posted = article ? new URLSearchParams(request.postData()) : null;
+      if (!article || posted.get('save') !== '1') {
+        request.continue().catch(reject);
+        return;
+      }
+      const timing = { timer_status: posted.get('timer_status'), timer_time: posted.get('timer_time') };
+      if (timing.timer_status !== '1' || timing.timer_time !== data.publishAt.slice(0, 16)) {
+        const error = new Error(`头条文章预约状态或时间不一致，已阻止正式提交：${JSON.stringify(timing)}`);
+        request.abort().then(() => reject(error), reject);
+        return;
+      }
+      request.continue().then(resolve, reject);
+    };
+    page.on('request', requestListener);
+  });
+  try {
+    await Promise.all([Promise.resolve().then(action), submitted]);
+  } finally {
+    page.off('request', requestListener);
+    if (!page.isClosed()) await page.setRequestInterception(false);
+  }
+}
+
 export async function uploadToutiaoImages(page, label, count, action) {
   const images = [];
   await runWithPublishResponse(page, label, async response => {
@@ -60,7 +89,9 @@ export async function submitToutiaoContent(page, data, kind, action) {
     }
     return false;
   },
-  action);
+  () => kind === 'article' && data.officialScheduledPublish
+    ? confirmScheduledToutiaoArticle(page, data, action)
+    : action());
   const directory = data.publishOptions?.toutiaoManifestPath
     ? JSON.parse(fs.readFileSync(data.publishOptions.toutiaoManifestPath, "utf8")).output_dir
     : path.dirname(path.resolve(data.filePath));
