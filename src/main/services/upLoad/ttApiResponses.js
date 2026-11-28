@@ -20,12 +20,16 @@ async function confirmScheduledToutiaoArticle(page, data, action) {
         return;
       }
       const timing = { timer_status: posted.get('timer_status'), timer_time: posted.get('timer_time') };
-      if (timing.timer_status !== '1' || timing.timer_time !== data.publishAt.slice(0, 16)) {
+      if (!['0', '1'].includes(timing.timer_status) || timing.timer_time !== data.publishAt.slice(0, 16)) {
         const error = new Error(`头条文章预约状态或时间不一致，已阻止正式提交：${JSON.stringify(timing)}`);
         request.abort().then(() => reject(error), reject);
         return;
       }
-      request.continue().then(resolve, reject);
+      // 预览7050会清除预约开关，但仍保留所选时间；正式提交恢复本次明确指定的预约。
+      request.toutiaoSubmittedTiming = { timer_status: '1', timer_time: timing.timer_time };
+      console.log('[头条文章预约提交参数]', JSON.stringify(request.toutiaoSubmittedTiming));
+      const postData = request.postData().replace(/(^|&)timer_status=0(?=&|$)/, '$1timer_status=1');
+      request.continue({ postData }).then(resolve, reject);
     };
     page.on('request', requestListener);
   });
@@ -109,7 +113,7 @@ export async function submitToutiaoContent(page, data, kind, action) {
   let timing;
   if (data.officialScheduledPublish && kind === "article") {
     const posted = new URLSearchParams(receipt.request.postData());
-    timing = { timer_status: posted.get("timer_status"), timer_time: posted.get("timer_time") };
+    timing = receipt.request.toutiaoSubmittedTiming || { timer_status: posted.get("timer_status"), timer_time: posted.get("timer_time") };
     if (timing.timer_status !== "1" || timing.timer_time !== data.publishAt.slice(0, 16)) {
       throw new Error(`头条文章提交的预约时间不一致，结果待核对：${JSON.stringify(timing)}`);
     }

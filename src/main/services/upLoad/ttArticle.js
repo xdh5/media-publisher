@@ -18,7 +18,8 @@ export async function publishToutiaoArticle(page, data, window, event) {
       const body = await response.json();
       const record = { time: new Date().toISOString(), save: form.get("save"),
         is_app_preview: form.get("is_app_preview"),
-        timer_status: form.get("timer_status"), timer_time: form.get("timer_time"),
+        ...(response.request().toutiaoSubmittedTiming || { timer_status: form.get("timer_status"), timer_time: form.get("timer_time") }),
+        cover_type: JSON.parse(form.get('draft_form_data') || '{}').coverType,
         code: body.code, message: body.message };
       fs.appendFileSync(path.join(manifest.output_dir, "toutiao-article-save-events.jsonl"), JSON.stringify(record) + "\n");
       console.log("[头条文章保存请求]", JSON.stringify(record));
