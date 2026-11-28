@@ -1,29 +1,22 @@
 "use strict";
 
-const PLATFORM_ALIASES = {
-  dy: "抖音",
-  douyin: "抖音",
-  抖音: "抖音",
-  sph: "视频号",
-  wechat_channels: "视频号",
-  视频号: "视频号",
-  blbl: "哔哩哔哩",
-  bilibili: "哔哩哔哩",
-  哔哩哔哩: "哔哩哔哩",
-  bjh: "百家号",
-  百家号: "百家号",
-  tt: "头条",
-  toutiao: "头条",
-  头条: "头条",
-  ks: "快手",
-  kuaishou: "快手",
-  快手: "快手",
-  xhs: "小红书",
-  xiaohongshu: "小红书",
-  小红书: "小红书",
-};
+const PLATFORM_ALIASES = {dy: "抖音",
+douyin: "抖音",
+抖音: "抖音",
+sph: "视频号",
+wechat_channels: "视频号",
+视频号: "视频号",
+blbl: "哔哩哔哩",
+bilibili: "哔哩哔哩",
+哔哩哔哩: "哔哩哔哩",
+tt: "头条",
+toutiao: "头条",
+头条: "头条",
+ks: "快手",
+kuaishou: "快手",
+快手: "快手"};
 
-const CANONICAL = ["抖音", "视频号", "哔哩哔哩", "百家号", "头条", "快手", "小红书"];
+const CANONICAL = ["抖音", "视频号", "哔哩哔哩", "头条", "快手"];
 
 export function parseAccountsArgs(subArgv) {
   const args = Array.isArray(subArgv) ? subArgv : [];
@@ -94,7 +87,7 @@ export function accountsHelpText() {
 数据来源：<Documents>/media-publisher/data/account/*.json（与 GUI 共用）。
 
 选项:
-  -p, --platform <id>   仅列某个平台：dy|抖音、tt|头条、ks|快手、blbl|哔哩哔哩、bjh|百家号、sph|视频号、xhs|小红书
+  -p, --platform <id>   仅列某个平台：dy|抖音、tt|头条、ks|快手、blbl|哔哩哔哩、sph|视频号
       --phone <id>      仅列某个手机号（支持前缀匹配完整 phone 字段）
       --platforms <列表>  仅检查指定平台，用逗号分隔，例如 dy,ks,sph
       --logged-in       仅显示已登录账号

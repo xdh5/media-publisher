@@ -15,31 +15,26 @@ const OFFICIAL_ALIASES = {
   fb: 'facebook'
 }
 
-const PLATFORM_ALIASES = {
-  blbl: '哔哩哔哩',
-  bilibili: '哔哩哔哩',
-  哔哩哔哩: '哔哩哔哩',
-  dy: '抖音',
-  douyin: '抖音',
-  抖音: '抖音',
-  sph: '视频号',
-  shipin: '视频号',
-  shipinhao: '视频号',
-  视频号: '视频号',
-  ks: '快手',
-  kuaishou: '快手',
-  快手: '快手',
-  tt: '头条',
-  toutiao: '头条',
-  头条: '头条',
-  头条号: '头条',
-  xhs: '小红书',
-  xiaohongshu: '小红书',
-  小红书: '小红书'
-}
+const PLATFORM_ALIASES = {blbl: '哔哩哔哩',
+bilibili: '哔哩哔哩',
+哔哩哔哩: '哔哩哔哩',
+dy: '抖音',
+douyin: '抖音',
+抖音: '抖音',
+sph: '视频号',
+shipin: '视频号',
+shipinhao: '视频号',
+视频号: '视频号',
+ks: '快手',
+kuaishou: '快手',
+快手: '快手',
+tt: '头条',
+toutiao: '头条',
+头条: '头条',
+头条号: '头条'}
 
-/** 当前支持抖音、视频号、快手、头条、小红书和B站扫码登录 */
-const SUPPORTED_LOGIN = ['抖音', '视频号', '快手', '头条', '小红书', '哔哩哔哩']
+/** 当前支持抖音、视频号、快手、头条和B站扫码登录 */
+const SUPPORTED_LOGIN = ['抖音', '视频号', '快手', '头条', '哔哩哔哩']
 
 /**
  * 解析 `cli login` 后的 argv（不含子命令名 login）
@@ -104,7 +99,7 @@ export function parseLoginArgs(subArgv) {
   if (!out.platform) {
     return {
       ok: false,
-      error: '缺少 --platform（或 -p）。扫码支持 dy / sph / ks / tt / xhs / blbl；官方登录支持 youtube / tiktok / instagram / facebook'
+      error: '缺少 --platform（或 -p）。扫码支持 dy / sph / ks / tt / blbl；官方登录支持 youtube / tiktok / instagram / facebook'
     }
   }
   const raw = String(out.platform).trim()
@@ -127,7 +122,7 @@ export function parseLoginArgs(subArgv) {
   if (!SUPPORTED_LOGIN.includes(pt)) {
     return {
       ok: false,
-      error: `cli login 当前支持抖音、视频号、快手、头条和小红书，收到: ${out.platform}。`
+      error: `cli login 当前支持抖音、视频号、快手、头条和B站，收到: ${out.platform}。`
     }
   }
   out.platform = pt
@@ -142,10 +137,6 @@ export function parseLoginArgs(subArgv) {
     }
     const phoneSeg = String(out.phone).split('-')[0]
     out.partition = `persist:${phoneSeg}${out.platform}`
-  }
-
-  if (out.platform === '小红书') {
-    return { ok: true, value: out }
   }
 
   if (out.show && !['视频号', '抖音', '哔哩哔哩'].includes(out.platform)) {
@@ -182,7 +173,7 @@ export function loginHelpText() {
   return `
 用法: <应用> cli login [选项]
 
-扫码登录的 Cookie 保存在 data/<账号组>。当前支持抖音、视频号、快手、头条和小红书。小红书打开创作者登录窗口。
+扫码登录的 Cookie 保存在 data/<账号组>。当前支持抖音、视频号、快手、头条和B站。
 YouTube 走 Google 官方授权，TikTok、Instagram、Facebook 走 Zernio。凭据写入 data/<账号组>/.env。
 
 官方登录示例:
@@ -199,7 +190,7 @@ YouTube 走 Google 官方授权，TikTok、Instagram、Facebook 走 Zernio。凭
 视频号登录支持 --show 弹出登录窗口，扫码后窗口自动关闭。
 
 选项:
-  -p, --platform <id>   扫码：dy / sph / ks / tt / xhs / blbl；官方：youtube / tiktok / instagram / facebook
+  -p, --platform <id>   扫码：dy / sph / ks / tt / blbl；官方：youtube / tiktok / instagram / facebook
       --phone <id>      扫码为手机号或账号组；官方登录必须指定有效账号组
       --client-secret <文件>  YouTube 的 Google 客户端 JSON
       --api-key <key>   Zernio API key，TikTok 与 Instagram/Facebook 使用各自的 key

@@ -46,7 +46,7 @@ media-publisher cli publish-toutiao-article --phone demo --file D:/article-reque
 Get-Content -Raw -Encoding utf8 ./accounts.json | python -m publishing configure-accounts
 ```
 
-平台码：抖音 `dy`、快手 `ks`、视频号 `sph`、B站 `blbl`、头条 `tt`、百家号 `bjh`、小红书 `xhs`、YouTube `youtube`、TikTok `tiktok`、Instagram `instagram`、Facebook `facebook`。
+平台码：抖音 `dy`、快手 `ks`、视频号 `sph`、B站 `blbl`、头条 `tt`、YouTube `youtube`、TikTok `tiktok`、Instagram `instagram`、Facebook `facebook`。
 
 | 可选功能 | 参数 |
 | --- | --- |
@@ -79,4 +79,4 @@ node dist/index.js
 
 ## 许可
 
-感谢 [MatrixMedia](https://github.com/hanliang97/MatrixMedia) 和 [social-auto-upload](https://github.com/dreammis/social-auto-upload)。许可证：[GPL-2.0-only](LICENSE)、[小红书上游 MIT](LICENSE.social-auto-upload)。
+感谢 [MatrixMedia](https://github.com/hanliang97/MatrixMedia) 和 [social-auto-upload](https://github.com/dreammis/social-auto-upload)。许可证：[GPL-2.0-only](LICENSE)。

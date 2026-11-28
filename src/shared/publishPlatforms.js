@@ -1,38 +1,23 @@
 "use strict";
 
 /** 平台别名 → 中文 canonical 名（与登录分区一致） */
-export const PLATFORM_ALIASES = {
-  dy: "抖音",
-  douyin: "抖音",
-  抖音: "抖音",
-  sph: "视频号",
-  视频号: "视频号",
-  blbl: "哔哩哔哩",
-  bilibili: "哔哩哔哩",
-  哔哩哔哩: "哔哩哔哩",
-  bjh: "百家号",
-  百家号: "百家号",
-  tt: "头条",
-  toutiao: "头条",
-  头条: "头条",
-  ks: "快手",
-  kuaishou: "快手",
-  快手: "快手",
-  xhs: "小红书",
-  xiaohongshu: "小红书",
-  小红书: "小红书",
-};
+export const PLATFORM_ALIASES = {dy: "抖音",
+douyin: "抖音",
+抖音: "抖音",
+sph: "视频号",
+视频号: "视频号",
+blbl: "哔哩哔哩",
+bilibili: "哔哩哔哩",
+哔哩哔哩: "哔哩哔哩",
+tt: "头条",
+toutiao: "头条",
+头条: "头条",
+ks: "快手",
+kuaishou: "快手",
+快手: "快手"};
 
 /** CLI 视频发布支持的全部平台（canonical 中文名） */
-export const VIDEO_PUBLISH_CANONICAL = [
-  "抖音",
-  "视频号",
-  "哔哩哔哩",
-  "百家号",
-  "头条",
-  "快手",
-  "小红书",
-];
+export const VIDEO_PUBLISH_CANONICAL = ["抖音", "视频号", "哔哩哔哩", "头条", "快手"];
 
 /**
  * @param {string} raw platform 字段原始值

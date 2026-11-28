@@ -2,52 +2,37 @@
 
 import { isPlatformLoginUrl, KUAISHOU_VIDEO_UPLOAD_SELECTOR } from "../../shared/platformPageState.js";
 
-import { XIAOHONGSHU_VIDEO_INPUT } from "./upLoad/xiaohongshuVideo.js";
 import { verifyWechatAccountIdentity } from "./wechatAccountIdentity.js";
 
-const READY_SELECTORS = {
-  哔哩哔哩: ['.bcc-upload-wrapper input[type="file"], .bcc-upload input[type="file"]'],
-  小红书: [XIAOHONGSHU_VIDEO_INPUT],
-  抖音: ['input[name="upload-btn"]'],
-  快手: [KUAISHOU_VIDEO_UPLOAD_SELECTOR],
-  百家号: [
-    '.pages-videoV2-index input[type="file"]',
-    '.video-main-container input[type="file"]',
-  ],
-  头条: [
+const READY_SELECTORS = {哔哩哔哩: ['.bcc-upload-wrapper input[type="file"], .bcc-upload input[type="file"]'],
+抖音: ['input[name="upload-btn"]'],
+快手: [KUAISHOU_VIDEO_UPLOAD_SELECTOR],
+头条: [
     '.byte-upload input[type="file"]',
     '.video-form input[type="file"]',
     '.upload-container input[type="file"]',
   ],
-  视频号: ['wujie-app.wujie_iframe >>> input[type="file"]'],
-};
+视频号: ['wujie-app.wujie_iframe >>> input[type="file"]']};
 
-const LOGIN_SELECTORS = {
-  哔哩哔哩: ['img[alt="Scan me!"]'],
-  小红书: ["div[class*='login-box']"],
-  抖音: [
+const LOGIN_SELECTORS = {哔哩哔哩: ['img[alt="Scan me!"]'],
+抖音: [
     "#animate_qrcode_container",
     'iframe[src*="passport"]',
     '[class*="login"] [class*="qrcode"]',
   ],
-  快手: [
+快手: [
     'iframe[src*="passport"]',
     '[class*="login"] [class*="qrcode"]',
   ],
-  百家号: [
-    '[id^="TANGRAM__PSP"]',
-    'iframe[src*="passport.baidu.com"]',
-  ],
-  头条: [
+头条: [
     'iframe[src*="passport"]',
     '[class*="login"] [class*="qrcode"]',
   ],
-  视频号: [
+视频号: [
     'iframe[src*="login"]',
     'img.qrcode',
     '[class*="login"] [class*="qrcode"]',
-  ],
-};
+  ]};
 
 export function needsRealPublishSessionProbe(platform) {
   return Object.prototype.hasOwnProperty.call(READY_SELECTORS, platform);

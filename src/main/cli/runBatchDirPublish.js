@@ -147,8 +147,6 @@ export async function runBatchDirPublish(v, cfg) {
         resolve({ ok, message });
       };
 
-
-
       const transport = {
         reply(channel, payload) {
           if (channel === "puppeteerFile-done") {
@@ -191,10 +189,7 @@ export async function runBatchDirPublish(v, cfg) {
     };
     results.push(r);
     console.log(JSON.stringify({ progress: true, done: true, ...r }));
-    if (v.platform === "小红书" && !taskResult.ok) {
-      console.error("小红书批量发布已停止，请核对创作者中心后再继续");
-      break;
-    }
+
   }
 
   const succeeded = results.filter((r) => r.status === "success").length;

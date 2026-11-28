@@ -7,10 +7,8 @@ from .platforms import PlatformSpec, PublishError, resolve_platform
 from .runner import run_browser_publish
 from .schedule import resolve_timings
 
-
 def _text(value: object) -> str:
     return str(value or "").strip()
-
 
 def _target_from_item(item: dict, platform: str) -> dict:
     if not isinstance(item, dict):
@@ -45,7 +43,6 @@ def _target_from_item(item: dict, platform: str) -> dict:
         "client_ref": _text(item.get("client_ref")),
     }
 
-
 def expand_request(request: dict) -> list[dict]:
     """items × platforms 展开成逐条目标。已经带 targets 时直接使用。"""
     if not isinstance(request, dict):
@@ -77,7 +74,6 @@ def expand_request(request: dict) -> list[dict]:
             targets.append(_target_from_item(item if isinstance(item, dict) else {}, spec.code))
     return targets
 
-
 def _check_target(target: dict, spec: PlatformSpec) -> None:
     if target["content_type"] not in {"video", "article", "micro"}:
         raise PublishError("content_type 必须为 video、article 或 micro")
@@ -98,14 +94,12 @@ def _check_target(target: dict, spec: PlatformSpec) -> None:
         if length < 6 or length > 16:
             raise PublishError(f"视频号短标题须为 6～16 字，当前 {length} 字：{target['title']}")
 
-
 def _publish_official(target: dict, account: dict, spec: PlatformSpec, timing: dict) -> dict:
     if account.get("credential_ref"):
         from platform_api.account_registry import account_context
         with account_context(account) as key:
             return _publish_official_with_context(target, {**account, "account_group": key}, spec, timing)
     return _publish_official_with_context(target, account, spec, timing)
-
 
 def _publish_official_with_context(target: dict, account: dict, spec: PlatformSpec, timing: dict) -> dict:
     from platform_api.facebook.publish_to_facebook import publish_to_facebook
@@ -150,7 +144,6 @@ def _publish_official_with_context(target: dict, account: dict, spec: PlatformSp
             publish_at=publish_at,
         )
     raise PublishError(f"不支持的官方平台：{spec.code}")
-
 
 def _publish_browser(target: dict, account: dict, spec: PlatformSpec, timing: dict) -> dict:
     if target["draft"] and timing["publish_mode"] == "scheduled":
@@ -221,7 +214,6 @@ def _publish_browser(target: dict, account: dict, spec: PlatformSpec, timing: di
         raise RuntimeError(f"{spec.label}未确认平台官方预约成功，不能把应用内定时记为成功")
     return payload
 
-
 def publish_batch(request: dict, progress=None, *, account_routes: dict | None = None) -> dict:
     """发布 targets，或把 items 发到全部 platforms。单条失败不会中断其余目标。"""
     account_group = str((request or {}).get("account_group") or "").strip()
@@ -257,7 +249,6 @@ def publish_batch(request: dict, progress=None, *, account_routes: dict | None =
     targets = expanded
     published = []
     failed = []
-    xiaohongshu_paused = False
     total = len(targets)
     for index, target in enumerate(targets, start=1):
         spec = resolve_platform(target["platform"])
@@ -273,8 +264,6 @@ def publish_batch(request: dict, progress=None, *, account_routes: dict | None =
         if progress:
             progress(f"正在发布 {index}/{total}：{spec.code} - {target['title']}")
         try:
-            if spec.code == "xiaohongshu" and xiaohongshu_paused:
-                raise PublishError("小红书发布已暂停，请核对创作者中心后再继续")
             account = accounts.get(target["account_key"] or spec.code)
             if not account:
                 raise PublishError(f"请为 {spec.label} 指定唯一的 account_key")
@@ -287,8 +276,6 @@ def publish_batch(request: dict, progress=None, *, account_routes: dict | None =
             else:
                 result = _publish_browser(target, account, spec, timing)
         except Exception as exc:
-            if spec.code == "xiaohongshu":
-                xiaohongshu_paused = True
             failed.append({
                 "platform": spec.code,
                 "title": target["title"],

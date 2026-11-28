@@ -1,7 +1,7 @@
 /** 在加载发布页前补齐 Electron 页面需要的浏览器属性。 */
 export async function prepareElectronPublishPage(page) {
   // 注入反自动化检测脚本（在页面 JS 执行前生效）
-  // 解决小红书等平台判定 Electron 为 "AI 自动化" 的问题
+  // 解决平台判定 Electron 为 "AI 自动化" 的问题
   await page.evaluateOnNewDocument(() => {
     // 1. 补全 window.chrome 对象（Electron 中缺失，正常 Chrome 有）
     if (!window.chrome) {

@@ -237,7 +237,7 @@ export function parsePublishArgs(subArgv) {
 
   if (out.bq && /[,，、;；|]/.test(out.bq)) {
     console.warn(
-      "media-publisher: --tags 推荐用空格分隔多个标签（如 '减脂 健身 教程'）；检测到 ,，、;；| 等分隔符，哔哩哔哩 / 小红书会按空格切分，逗号将作为单个标签字符保留。"
+      "media-publisher: --tags 推荐用空格分隔多个标签（如 '减脂 健身 教程'）；检测到 ,，、;；| 等分隔符，哔哩哔哩会按空格切分，逗号将作为单个标签字符保留。"
     );
   }
 
@@ -263,7 +263,7 @@ export function publishHelpText() {
 字段与命令行发布参数一致：
 
 选项:
-  -p, --platform <id>   平台：dy|抖音、tt|头条、ks|快手、blbl|哔哩哔哩、bjh|百家号、sph|视频号、xhs|小红书
+  -p, --platform <id>   平台：dy|抖音、tt|头条、ks|快手、blbl|哔哩哔哩、sph|视频号
   -f, --file <path>     本地视频文件路径，或 http(s) 远程视频 URL（远程会先下载到临时目录，发布结束后自动删除）
       --dir <path>          [batch] video directory path; must be paired with --config
       --config <path>       [batch] xlsx declaration file path (columns: 文件名/标题/标签/创作声明)
@@ -278,8 +278,8 @@ export function publishHelpText() {
       --bt2 <text>      视频号概括短标题，由发布业务明确指定；不传时保持空白。
       --tags <text>     视频标签 → data.bq（同 --bq）。多个标签用【空格】分隔，例如 "减脂 健身 教程"。
                             • 视频号/抖音/快手：整串拼进描述末尾；未写 # 的标签会自动补上。
-                            • 哔哩哔哩/小红书：按空格切分为独立标签，前导 # 会被自动剥离，可省。
-                            • 百家号/头条：当前代码不消费 bq，无需填。
+                            • 哔哩哔哩：按空格切分为独立标签，前导 # 会被自动剥离，可省。
+                            • 头条：当前代码不消费 bq，无需填。
       --widescreen-cover <path>  B站16:9个人空间封面，--cover为4:3首页封面
       --category <分区>  B站分区；不传则保留页面默认分区
       --ai-chapters    抖音或B站智能生成章节，等待生成结果并保存
@@ -289,12 +289,12 @@ export function publishHelpText() {
       --cover <path>   自定义封面：抖音使用4:3，快手使用3:4，头条视频使用16:9
       --portrait-cover <path>  抖音自定义竖封面，完整适配 3:4
       --publish-at <t>  一次性定时发布，格式 "YYYY-MM-DD HH:mm:ss"。抖音、快手、视频号、
-                            百家号、头条和小红书会立即上传并设置平台官方定时；其他平台直接报错。
+                            头条会立即上传并设置平台官方定时；其他平台直接报错。
                             应用内定时队列已移除。
                             不支持每日/每周/每月循环。
       --show            显示视频号、抖音、快手、B站或头条自动化窗口
       --no-close-window 发布后不自动关窗（与 --show 一起使用）
-      --draft           显式发布到草稿箱（小红书点「暂存离开」）。若账号配置了「默认发布到草稿」，
+      --draft           显式发布到草稿箱。若账号配置了「默认发布到草稿」，
                             即使不加该参数也会自动走草稿。
       --sph-product-id <id>   视频号商品上架（快捷参数，等价于 product + 商品编号）
       --sph-link-type <type>  视频号链接类型：none | product；传给其他平台时忽略

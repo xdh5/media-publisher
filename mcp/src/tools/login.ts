@@ -144,14 +144,14 @@ function withQr(session: LoginSession, text: string): McpContent[] {
 export const loginTool: Tool = {
   name: "login",
   description:
-    "为 data 账号组登录平台。抖音、快手、头条、视频号、小红书返回扫码二维码；YouTube、TikTok、Instagram、Facebook 打开系统浏览器授权。" +
+    "为 data 账号组登录平台。抖音、快手、头条、视频号返回扫码二维码；YouTube、TikTok、Instagram、Facebook 打开系统浏览器授权。" +
     "扫码时必须把 qr_path 写进回复里的图片和文件链接。授权或扫码完成后用 login_status 查询，直到 success 再 start_publish。",
   inputSchema: {
     type: "object",
     properties: {
       platform: {
         type: "string",
-        description: "扫码：douyin / kuaishou / toutiao / wechat_channels / xiaohongshu；官方授权：youtube / tiktok / instagram / facebook",
+        description: "扫码：douyin / kuaishou / toutiao / wechat_channels；官方授权：youtube / tiktok / instagram / facebook",
       },
       account_group: {
         type: "string",

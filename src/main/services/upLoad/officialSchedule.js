@@ -4,18 +4,9 @@ import { setKuaishouSchedule } from "./officialSchedule/kuaishou.js";
 import { setShipinhaoSchedule } from "./officialSchedule/shipinhao.js";
 import { setDialogSchedule } from "./officialSchedule/dialog.js";
 
-export { waitForOfficialScheduleAccepted } from "./officialSchedule/acceptance.js";
 export { clickKuaishouScheduleConfirmation } from "./officialSchedule/kuaishou.js";
 
-const OFFICIAL_SCHEDULE_PLATFORMS = new Set([
-  "哔哩哔哩",
-  "抖音",
-  "快手",
-  "视频号",
-  "百家号",
-  "头条",
-  "小红书",
-]);
+const OFFICIAL_SCHEDULE_PLATFORMS = new Set(["哔哩哔哩", "抖音", "快手", "视频号", "头条"]);
 
 export function supportsOfficialSchedule(platform) {
   return OFFICIAL_SCHEDULE_PLATFORMS.has(String(platform || "").trim());

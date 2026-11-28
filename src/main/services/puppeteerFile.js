@@ -11,11 +11,7 @@ import { saveStalledPublishDiagnostics } from "./publishDiagnostics.js";
 import { createPublishTaskQueue } from "./publishTaskQueue.js";
 import { skipCloseConfirmation } from "./upLoad/closeWindow.js";
 import { applyAccountProxyForTask } from "./proxyConfig.js";
-import {
-  applyXhsConservativePublishOptions,
-  getPublishAttemptLimit,
-  isXhsPlatform,
-} from "../../shared/xhsPublishPolicy.js";
+
 import { isPlatformLoginUrl } from "../../shared/platformPageState.js";
 import {
   needsRealPublishSessionProbe,
@@ -48,25 +44,7 @@ function isExpectedPublishUrl(data, currentUrl) {
       // URL 无法解析时继续使用各平台原有兼容判断。
     }
   }
-  // 百家号上传页 baidu 经常追加/重排 query（app_id、登录态参数等），strict === 会一直
-  // 走 URL 不匹配的重试关窗分支，导致 bjh handler 一次都进不去、日志也不会出现。
-  // 改成 origin + /builder/rc/edit 前缀匹配。
-  if (data && data.pt === "百家号") {
-    try {
-      const current = new URL(currentUrl);
-      const expected = new URL(data.url);
-      return (
-        current.origin === expected.origin &&
-        current.pathname.indexOf("/builder/rc/edit") === 0
-      );
-    } catch (_) {
-      return (
-        String(currentUrl || "").indexOf(
-          "https://baijiahao.baidu.com/builder/rc/edit"
-        ) === 0
-      );
-    }
-  }
+
   return false;
 }
 
@@ -75,10 +53,10 @@ export function runPuppeteerTask(data, transport, onFinish) {
 }
 
 async function doUpload(data, transport, queueDone) {
-  data = applyXhsConservativePublishOptions(data);
+
   data.partition = data.partition.split("-")[0];
-  const isXhsTask = isXhsPlatform(data.pt);
-  const maxRetries = data.show || data.pt === "哔哩哔哩" ? 1 : getPublishAttemptLimit(data, 5);
+
+  const maxRetries = data.show || data.pt === "哔哩哔哩" ? 1 : 5;
   let currentAttempt = 0;
   let finished = false;
   let activeBrowser = null;
@@ -154,7 +132,7 @@ async function doUpload(data, transport, queueDone) {
         console.error("[发布失败阶段]", JSON.stringify({ ...getPublishProgress(page), message: payload.message }));
         // 官方定时发布已经完成上传并操作平台页面，失败后自动重试可能重复提交。
         // 直接返回真实失败结果，让调用方决定是否按新时间重新发起。
-        if (isXhsTask || data.officialScheduledPublish || payload.needsAttention) {
+        if (data.officialScheduledPublish || payload.needsAttention) {
           const replied = transport.reply(channel, ...args);
           finishOnce();
           return replied;
@@ -214,9 +192,7 @@ async function doUpload(data, transport, queueDone) {
           connect: options => puppeteer.connect({ ...options, protocolTimeout: 0 }),
         });
         win = new BrowserWindow({
-        show: isXhsTask
-          ? true
-          : data.mmCliSuppressWindow
+        show: data.mmCliSuppressWindow
           ? false
           : data?.show ?? false,
         width: data?.width ?? 1300,
@@ -358,7 +334,7 @@ async function doUpload(data, transport, queueDone) {
       // 统一 UA：所有平台都强制设置 data.useragent。
       // 这一步很关键：账号管理里 <webview> 是用 ptConfig[pt].useragent（Chrome/138 桌面 UA）扫码登的，
       // 而 BrowserWindow 默认 UA 带 "Electron/x.x.x" 字样。如果发布时不改 UA，
-      // 小红书 / 抖音 / 快手等站点的风控会把"同账号、不同 UA"判定为换设备，
+      // 抖音 / 快手等站点的风控会把"同账号、不同 UA"判定为换设备，
       // cookie 即使共享也会被要求重新登录，表现就是用户看到的"重复登录"。
       // 之前的代码只在 pt 含"视频"时才 setUserAgent，是历史遗留，现在统一对齐。
       if (data.useragent) {
@@ -382,7 +358,7 @@ async function doUpload(data, transport, queueDone) {
       }
 
       setPublishStage(page, "打开平台发布页");
-      if (isXhsTask || data.pt.indexOf("视频") !== -1) {
+      if (data.pt.indexOf("视频") !== -1) {
         await page.goto(data.url, {
           waitUntil: "domcontentloaded",
           timeout: 0,
@@ -474,8 +450,7 @@ async function doUpload(data, transport, queueDone) {
                   identityMismatch: sessionProbe.identityMismatch === true,
                   needsAttention: true,
                   supportsQrLogin,
-                  ...(isXhsTask && sessionProbe.loginRequired
-                    ? { loginUrl: "https://creator.xiaohongshu.com/login" } : {}),
+
                 });
                 finishOnce();
                 if (win && !win.isDestroyed()) {
@@ -490,7 +465,6 @@ async function doUpload(data, transport, queueDone) {
             if (typeof action !== "function") {
               // pt 没注册处理器属于配置/调用方错误，重试 5 次也变不出来 handler，
               // 反而会反复打开同一个 URL，触发站点重复登录（典型例子：账号管理
-              // 之前发的 pt="小红书登录" 在 Type.js 里没对应项）。直接终结任务。
               console.warn(
                 `未找到平台处理器: ${data.pt}，跳过重试直接结束任务`
               );
@@ -516,7 +490,7 @@ async function doUpload(data, transport, queueDone) {
                 ...data,
                 currentUrl,
                 message,
-                ...(isXhsTask ? { loginUrl: "https://creator.xiaohongshu.com/login" } : {}),
+                ...({}),
               });
               finishOnce();
               if (win && !win.isDestroyed()) {
@@ -524,15 +498,7 @@ async function doUpload(data, transport, queueDone) {
               }
               return;
             }
-            if (isXhsTask) {
-              safeReply("puppeteerFile-done", {
-                ...data,
-                status: false,
-                message: `小红书页面地址异常，已保留窗口: ${currentUrl}`,
-              });
-              finishOnce();
-              return;
-            }
+
             if (win && !win.isDestroyed()) {
               win._mmRetryAfterClose = true;
               closePublishWinProgrammatically(win);
@@ -551,7 +517,7 @@ async function doUpload(data, transport, queueDone) {
               status: false,
               message: failurePayload?.message || err.message || "执行失败",
             });
-            if (!isXhsTask && !data.show && win && !win.isDestroyed())
+            if (!data.show && win && !win.isDestroyed())
               closePublishWinProgrammatically(win);
             finishOnce();
             return;
@@ -577,15 +543,7 @@ async function doUpload(data, transport, queueDone) {
         return;
       }
       console.log(`尝试${currentAttempt}发生错误:`, error);
-      if (isXhsTask) {
-        safeReply("puppeteerFile-done", {
-          ...data,
-          status: false,
-          message: error.message || "小红书任务异常，已保留窗口",
-        });
-        finishOnce();
-        return;
-      }
+
       if (win && !win.isDestroyed()) {
         win._mmRetryAfterClose = true;
         closePublishWinProgrammatically(win);

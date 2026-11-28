@@ -8,7 +8,7 @@ import { runOfficialPython } from "../services/officialPython";
 import { accountGroupFromArgv } from "../services/matrixDataPaths";
 import { probeAccountSessions } from "../services/accountSessionProbe.js";
 
-const ACCOUNT_PLATFORMS = new Set(["抖音", "百家号", "头条", "视频号", "哔哩哔哩", "快手", "小红书"]);
+const ACCOUNT_PLATFORMS = new Set(["抖音", "头条", "视频号", "哔哩哔哩", "快手"]);
 
 function getAccountsDir() {
   const documents = app.getPath("documents");

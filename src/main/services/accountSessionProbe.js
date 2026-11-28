@@ -37,7 +37,7 @@ export async function probeAccountSessions(accounts) {
         });
         const page = await pie.getPage(browser, win);
         await page.setUserAgent(ptConfig[account.pt].useragent);
-        await page.goto(ptConfig[account.pt].upload, { waitUntil: "domcontentloaded", timeout: account.pt === "小红书" ? 120000 : 30000 });
+        await page.goto(ptConfig[account.pt].upload, { waitUntil: "domcontentloaded", timeout: 30000 });
         const result = await probeRealPublishSession(page, account.pt, 30000);
         let screenshotPath = null;
         if (!result.ok && !result.loginRequired) {
@@ -52,8 +52,7 @@ export async function probeAccountSessions(accounts) {
           status: result.ok ? "connected" : result.loginRequired ? "login_required" : "error",
           loginRequired: result.loginRequired === true, realSessionProbe: true,
           checkedAt: new Date().toISOString(), reason: result.reason, currentUrl: result.currentUrl, screenshotPath,
-          ...(account.pt === "小红书" && result.loginRequired
-            ? { loginUrl: "https://creator.xiaohongshu.com/login" } : {}) };
+          };
       } catch (error) {
         return { loggedIn: null, status: "error", loginRequired: false, realSessionProbe: true,
           checkedAt, reason: `发布页检测失败：${error.message}` };

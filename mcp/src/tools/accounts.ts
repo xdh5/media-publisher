@@ -16,7 +16,7 @@ export const listAccountsTool: Tool = {
       platform: {
         type: "string",
         description:
-          "可选平台过滤。国内：douyin / kuaishou / toutiao / wechat_channels / baijiahao / bilibili / xiaohongshu；海外：youtube / tiktok / instagram / facebook",
+          "可选平台过滤。国内：douyin / kuaishou / toutiao / wechat_channels / bilibili；海外：youtube / tiktok / instagram / facebook",
       },
     },
     required: [],

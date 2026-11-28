@@ -23,12 +23,7 @@ export function isPlatformLoginUrl(platform, currentUrl) {
         (host === "cp.kuaishou.com" && pathname.includes("/login"))
       );
     }
-    if (pt === "百家号") {
-      return (
-        host === "passport.baidu.com" ||
-        (host === "baijiahao.baidu.com" && pathname.includes("/login"))
-      );
-    }
+
     if (pt === "头条") {
       return (
         host === "sso.toutiao.com" ||
@@ -36,9 +31,7 @@ export function isPlatformLoginUrl(platform, currentUrl) {
         (host === "mp.toutiao.com" && pathname.includes("/login"))
       );
     }
-    if (pt === "小红书") {
-      return host === "creator.xiaohongshu.com" && /^\/login(?:\/|$)/.test(pathname);
-    }
+
     if (pt === "视频号") {
       return (
         url.origin === "https://channels.weixin.qq.com" &&

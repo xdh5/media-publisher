@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-
 @dataclass(frozen=True)
 class PlatformSpec:
     code: str
@@ -15,15 +14,12 @@ class PlatformSpec:
     partition_name: str
     qr_login: bool
 
-
 _PLATFORMS = (
     PlatformSpec("douyin", "dy", "抖音", "browser", "browser_official", "抖音", True),
     PlatformSpec("kuaishou", "ks", "快手", "browser", "browser_official", "快手", True),
     PlatformSpec("toutiao", "tt", "头条", "browser", "browser_official", "头条", True),
     PlatformSpec("wechat_channels", "sph", "视频号", "browser", "browser_official", "视频号", True),
-    PlatformSpec("baijiahao", "bjh", "百家号", "browser", "browser_official", "百家号", False),
     PlatformSpec("bilibili", "blbl", "哔哩哔哩", "browser", "browser_official", "哔哩哔哩", True),
-    PlatformSpec("xiaohongshu", "xhs", "小红书", "browser", "browser_official", "小红书", True),
     PlatformSpec("youtube", "youtube", "YouTube", "official", "api_official", "", False),
     PlatformSpec("tiktok", "tiktok", "TikTok", "official", "api_official", "", False),
     PlatformSpec("instagram", "instagram", "Instagram", "official", "api_official", "", False),
@@ -43,17 +39,14 @@ _ALIASES["ins"] = _ALIASES["instagram"]
 _ALIASES["fb"] = _ALIASES["facebook"]
 _ALIASES["头条号"] = _ALIASES["toutiao"]
 
-
 class PublishError(Exception):
     """发布参数或账号组不满足统一发布要求。"""
-
 
 def resolve_platform(raw: str) -> PlatformSpec:
     spec = _ALIASES.get(str(raw or "").strip().casefold())
     if spec is None:
         raise PublishError(f"未知平台：{raw}")
     return spec
-
 
 def describe_platform(raw: str) -> dict:
     spec = resolve_platform(raw)
