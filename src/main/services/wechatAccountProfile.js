@@ -26,4 +26,3 @@ export async function readWechatAccountProfile(page) {
   }
   return { ok: true, loginRequired: false, displayName: response.nickname || "", currentUrl, reason: "视频号个人信息接口验证通过" };
 }
-
