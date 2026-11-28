@@ -50,7 +50,7 @@ Get-Content -Raw -Encoding utf8 ./accounts.json | python -m publishing configure
 
 | 可选功能 | 参数 |
 | --- | --- |
-| 智能章节 | `--ai-chapters` |
+| 抖音智能章节 | `--ai-chapters` |
 | 视频号原创 | `--declare-original` |
 | 封面 | `--cover`、`--portrait-cover`、`--widescreen-cover` |
 | B站分区 | `--category` |

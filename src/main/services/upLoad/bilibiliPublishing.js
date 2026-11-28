@@ -1,7 +1,46 @@
 import { setPublishStage } from "../publishStage.js";
 import fs from 'fs';
 import path from 'path';
-import { pollPageUntil } from "./publishPageWait.js";
+
+export async function uploadBilibiliVideo(page, filename) {
+  const file = path.resolve(filename);
+  setPublishStage(page, '等待B站上传视频按钮');
+  const button = await page.waitForXPath('//*[normalize-space(text())="上传视频"]', { visible: true, timeout: 0 });
+  setPublishStage(page, '点击B站上传视频并选择文件');
+  const chooserReady = page.waitForFileChooser({ timeout: 0 });
+  const [chooser] = await Promise.all([chooserReady, button.click()]);
+  await chooser.accept([file]);
+  console.log('[B站选择视频文件]', path.basename(file));
+  let started = false;
+  let lastState = '';
+  while (!page.isClosed()) {
+    const state = await page.evaluate(() => {
+      const item = document.querySelector('.file-item');
+      const visible = node => node.getBoundingClientRect().width > 0;
+      const messages = [...document.querySelectorAll('.bcc-message, [role="alert"]')]
+        .filter(visible).map(node => node.textContent).join(' ');
+      const text = String(item?.textContent || '').replace(/\s+/g, ' ').trim();
+      return { started: Boolean(item && visible(item)),
+        done: Boolean(item?.querySelector('.file-item-content-status .success')),
+        error: /上传失败|不支持.*格式|文件过大|超过.*大小限制/.test(text + messages) ? text + messages : '',
+        text };
+    });
+    if (state.error) throw new Error(`B站视频上传失败：${state.error}`);
+    if (state.started && !started) {
+      started = true;
+      setPublishStage(page, '等待B站视频上传完成');
+      console.log('[B站上传已开始]', path.basename(file));
+    }
+    const current = JSON.stringify(state);
+    if (current !== lastState) {
+      console.log('[B站视频上传状态]', current);
+      lastState = current;
+    }
+    if (state.done) return;
+    await page.waitForTimeout(1000);
+  }
+  throw new Error('发布页面已关闭，停止等待B站视频上传');
+}
 
 export async function waitBilibiliElement(page, selector) {
   while (!page.isClosed()) {
@@ -52,62 +91,6 @@ export async function uploadBilibiliCover(page, filename, widescreen) {
   await page.waitForFunction(() => !document.querySelector('.cover-main .cover-empty') && !!document.querySelector('.cover-main .cover-img'), { polling: 200, timeout: 0 });
 }
 
-export async function generateBilibiliChapters(page) {
-  setPublishStage(page, '打开B站章节编辑器');
-  const [more] = await page.$x("//span[contains(@class,'label') and starts-with(normalize-space(.),'更多设置')]");
-  if (more) await more.evaluate(e => e.click());
-  await clickBilibiliText(page, '编辑章节');
-  const iframe = await waitBilibiliElement(page, '.chapter-setting iframe.iframe-wrp');
-  const editor = await iframe.contentFrame();
-  let lastChapterState = '';
-  const framePoll = { isClosed: () => page.isClosed(), evaluate: async fn => {
-    // 持续接收平台章节结果，由通用监控判断页面是否停滞。
-    await editor.evaluate(timeout => {
-      for (const element of document.querySelectorAll('*')) {
-        const component = element.__vue__;
-        if (component && 'aiTimeoutTime' in component) component.aiTimeoutTime = timeout;
-      }
-    }, Number.MAX_SAFE_INTEGER);
-    const state = await editor.evaluate(() => ({ text: document.body.innerText.split('\n').filter(line => !/^\d{2}:\d{2}$/.test(line)).join('\n'),
-      buttons: [...document.querySelectorAll('button,[role=button]')].filter(e => e.getBoundingClientRect().width > 0)
-        .map(e => ({ text: e.innerText, disabled: e.disabled })) }));
-    const serialized = JSON.stringify(state);
-    if (serialized !== lastChapterState) {
-      console.log('[B站章节状态]', serialized);
-      lastChapterState = serialized;
-    }
-    const percentage = state.text.match(/(?:^|\n)(\d+)%/);
-    if (percentage) setPublishStage(page, `生成B站智能章节（${percentage[1]}%）`);
-    return editor.evaluate(fn);
-  }, waitForTimeout: ms => page.waitForTimeout(ms) };
-  await pollPageUntil(framePoll, () => /智能/.test(document.body.innerText), undefined, 500);
-  console.log('[blbl] 章节编辑器：' + await editor.evaluate(() => document.body.innerText));
-  const chapterResponse = async response => {
-    try {
-      if (response.request().frame() !== editor || !response.headers()['content-type']?.includes('json')) return;
-      const body = await response.json();
-      console.log('[B站章节接口]', JSON.stringify({ path: new URL(response.url()).pathname,
-        httpStatus: response.status(), code: body.code, message: body.message,
-        dataFields: Object.keys(body.data || {}), status: body.data?.status, state: body.data?.state }));
-    } catch (error) {
-      console.log('[B站章节接口采样失败]', error.message);
-    }
-  };
-  page.on('response', chapterResponse);
-  setPublishStage(page, '生成B站智能章节');
-  await clickBilibiliText(editor, '智能生成');
-  console.log('[B站章节主页面提示]', await page.evaluate(() => [...document.querySelectorAll('[role=dialog],.bili-dialog,.bili-modal')]
-    .filter(e => e.getBoundingClientRect().width > 0).map(e => e.innerText)));
-  await pollPageUntil(framePoll, () => /章节数[：:]?\s*[1-9]\d*/.test(document.body.innerText) && !/智能分析中/.test(document.body.innerText), undefined, 1000);
-  const chapters = await editor.evaluate(() => ({ count: Number(document.body.innerText.match(/章节数[：:]?\s*(\d+)/)[1]),
-    titles: [...document.querySelectorAll('input,textarea')].map(e => e.value.trim()).filter(text => text && !/^[\d:.]+$/.test(text)) }));
-  setPublishStage(page, '保存B站智能章节');
-  await clickBilibiliText(editor, '保存');
-  await page.waitForFunction(() => ![...document.querySelectorAll('.chapter-setting iframe')].some(e => e.getBoundingClientRect().width > 0), { polling: 200, timeout: 0 });
-  page.off('response', chapterResponse);
-  return chapters;
-}
-
 const scheduledRequests = new WeakMap();
 
 export async function setBilibiliSchedule(page, text) {
@@ -149,6 +132,6 @@ export async function submitBilibiliVideo(page, data) {
     const expected = new Date(data.publishAt.replace(' ', 'T') + '+08:00').getTime() / 1000;
     if (Number(payload.dtime) !== expected) throw new Error('B站提交的预约时间与指定时间不一致');
   }
-  fs.writeFileSync(path.join(path.dirname(path.resolve(data.filePath)), 'bilibili-submit-response.json'), JSON.stringify({ aid, bvid, title: payload.title, dtime: payload.dtime || 0, cover: payload.cover, cover16_9: payload.cover16_9, chapter: payload.chapter }, null, 2));
+  fs.writeFileSync(path.join(path.dirname(path.resolve(data.filePath)), 'bilibili-submit-response.json'), JSON.stringify({ aid, bvid, title: payload.title, dtime: payload.dtime || 0, cover: payload.cover, cover16_9: payload.cover16_9 }, null, 2));
   return { aid, bvid, video_id: bvid || (aid ? String(aid) : ""), video_url: bvid ? `https://www.bilibili.com/video/${bvid}` : '', scheduled, publish_at: scheduled ? data.publishAt : null };
 }

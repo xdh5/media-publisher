@@ -146,6 +146,8 @@ def _publish_official_with_context(target: dict, account: dict, spec: PlatformSp
     raise PublishError(f"不支持的官方平台：{spec.code}")
 
 def _publish_browser(target: dict, account: dict, spec: PlatformSpec, timing: dict) -> dict:
+    if spec.code == "bilibili" and target["ai_chapters"]:
+        raise PublishError("B站不支持智能章节")
     if target["draft"] and timing["publish_mode"] == "scheduled":
         raise PublishError(f"{spec.label}预约发布不能同时保存草稿")
     if target["content_type"] != "video":
@@ -180,8 +182,6 @@ def _publish_browser(target: dict, account: dict, spec: PlatformSpec, timing: di
             arguments.extend(['--category', target['category']])
         if target['thumbnail_path']:
             arguments.extend(['--cover', target['thumbnail_path']])
-        if target['ai_chapters']:
-            arguments.append('--ai-chapters')
     if spec.code == "douyin":
         if target["ai_chapters"]:
             arguments.append("--ai-chapters")

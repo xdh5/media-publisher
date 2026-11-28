@@ -10,7 +10,7 @@ const publishItemSchema = {
     thumbnail_path: { type: "string" },
     portrait_thumbnail_path: { type: "string" },
     widescreen_thumbnail_path: { type: "string" },
-    ai_chapters: { type: "boolean" },
+    ai_chapters: { type: "boolean", description: "抖音智能章节" },
     declare_original: { type: "boolean" },
     generate_image_text: { type: "boolean" },
     system_cover_index: { type: "integer", minimum: 0 },

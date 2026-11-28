@@ -78,7 +78,6 @@ export function parsePublishArgs(subArgv) {
       out.creativeStatement = args[++i];
     } else if (a === "--ai-chapters") {
       out.publishOptions.dyAiChapters = true;
-      out.publishOptions.blblAiChapters = true;
     } else if (a === "--declare-original") {
       out.publishOptions.declareOriginal = true;
     } else if (a === "--generate-image-text") {
@@ -118,6 +117,9 @@ export function parsePublishArgs(subArgv) {
     return { ok: false, error: `未知平台: ${out.platform}` };
   }
   out.platform = pt;
+  if (pt === "哔哩哔哩" && out.publishOptions.dyAiChapters) {
+    return { ok: false, error: "B站不支持 --ai-chapters" };
+  }
 
   // 视频号链接是平台专属参数；误传给其他平台时直接忽略。
   if (out.platform === "视频号") {
@@ -282,7 +284,7 @@ export function publishHelpText() {
                             • 头条：当前代码不消费 bq，无需填。
       --widescreen-cover <path>  B站16:9个人空间封面，--cover为4:3首页封面
       --category <分区>  B站分区；不传则保留页面默认分区
-      --ai-chapters    抖音或B站智能生成章节，等待生成结果并保存
+      --ai-chapters    抖音智能生成章节，等待生成结果并保存
       --declare-original 视频号声明原创，由业务请求明确指定
       --generate-image-text <true|false> 头条生成图文选项
       --system-cover-index <数字> 头条系统候选封面索引，从零开始

@@ -5,7 +5,7 @@ import maybeClosePublishWindow from './closeWindow.js';
 import { getCreativeStatementOption, resolveBlblCreativeStatementLabel } from '../../../shared/creativeStatement.js';
 import { pollPageUntil } from "./publishPageWait.js";
 import { setOfficialSchedule } from './officialSchedule.js';
-import { waitBilibiliElement, selectBilibiliCategory, uploadBilibiliCover, generateBilibiliChapters, submitBilibiliVideo } from './bilibiliPublishing.js';
+import { waitBilibiliElement, uploadBilibiliVideo, selectBilibiliCategory, uploadBilibiliCover, submitBilibiliVideo } from './bilibiliPublishing.js';
 
 async function selectBlblCreativeStatement(page, data) {
   const value = data.data && data.data.creativeStatement;
@@ -67,13 +67,7 @@ export default async function (page, data, window, event) {
   try {
     const options = data.publishOptions || {};
     const draft = data.publishMode === 'draft' || data.publishToDraft === true;
-    setPublishStage(page, '等待B站视频上传控件');
-    const upload = await waitBilibiliElement(page, '.bcc-upload-wrapper input[type=file],.bcc-upload input[type=file]');
-    setPublishStage(page, '上传B站视频文件');
-    await upload.uploadFile(path.resolve(data.filePath));
-    console.log('[blbl] 开始等待视频上传完成');
-    setPublishStage(page, '等待B站视频上传完成');
-    await pollPageUntil(page, () => !!document.querySelector('.file-item-content-status .success'), undefined, 1000);
+    await uploadBilibiliVideo(page, data.filePath);
 
     setPublishStage(page, '填写B站稿件标题');
     await waitBilibiliElement(page, 'input[placeholder="请输入稿件标题"]');
@@ -111,7 +105,6 @@ export default async function (page, data, window, event) {
     console.log("[blbl] 上传完成，设置封面");
     if (options.coverPath) await uploadBilibiliCover(page, options.coverPath, options.widescreenCoverPath);
     console.log("[blbl] 封面已设置");
-    const chapters = options.blblAiChapters ? await generateBilibiliChapters(page) : [];
     if (data.officialScheduledPublish) await setOfficialSchedule(page, '哔哩哔哩', data.publishAt);
     let result;
     if (draft) {
@@ -123,14 +116,14 @@ export default async function (page, data, window, event) {
     }
     const receipt = path.join(path.dirname(path.resolve(data.filePath)), 'bilibili-publication.json');
     setPublishStage(page, '登记B站投稿回执');
-    fs.writeFileSync(receipt, JSON.stringify({ ...result, title: data.data.bt1, category: options.category || null, chapters, saved_at: new Date().toISOString() }, null, 2));
+    fs.writeFileSync(receipt, JSON.stringify({ ...result, title: data.data.bt1, category: options.category || null, saved_at: new Date().toISOString() }, null, 2));
     event.reply('puppeteerFile-done', { ...data, status: true, officialScheduled: result.scheduled === true, scheduled: result.scheduled === true,
       publishMode: draft ? 'draft' : 'publish', publishToDraft: draft, message: draft ? '草稿保存成功' : 'B站投稿已核验', outcome: result, publicationReceipt: receipt });
     maybeClosePublishWindow(data, window);
   } catch (error) {
     const diagnostic = await page.evaluate(() => ({ url: location.href, text: document.body.innerText,
       inputs: [...document.querySelectorAll('input')].map(e => ({ placeholder: e.placeholder, type: e.type, accept: e.accept, className: e.className, parent: e.parentElement.outerHTML.slice(0, 700) })),
-      sections: [...document.querySelectorAll('[class*=cover],[class*=chapter],[class*=schedule],[class*=human-type]')].slice(0, 35).map(e => e.outerHTML.slice(0, 1500)) }));
+      sections: [...document.querySelectorAll('[class*=cover],[class*=schedule],[class*=human-type]')].slice(0, 35).map(e => e.outerHTML.slice(0, 1500)) }));
     const frames = [];
     for (const frame of page.frames()) {
       frames.push({ url: frame.url(), text: await frame.evaluate(() => document.body?.innerText || '').catch(() => ''), html: await frame.content().catch(() => '') });
