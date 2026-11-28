@@ -61,7 +61,7 @@ async function startApplication() {
     const code = await runCliMain(process.argv);
     const exitCode = typeof code === "number" ? code : 0;
     console.log(`[startup] CLI 执行结束，退出码=${exitCode}`);
-    if (process.argv.includes("--show")) {
+    if (process.argv.includes("--show") && !app.publisherIdleTimeout) {
       console.log("[startup] 可见窗口已保留，关闭窗口后结束。");
       return;
     }

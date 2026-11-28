@@ -7,6 +7,7 @@ import pie from "puppeteer-in-electron";
 import Type from "./Type";
 import { prepareElectronPublishPage } from "./electronPublishPage.js";
 import { initializePublishProgress, setPublishStage, getPublishProgress } from "./publishStage.js";
+import { saveStalledPublishDiagnostics } from "./publishDiagnostics.js";
 import { createPublishTaskQueue } from "./publishTaskQueue.js";
 import { UPLOAD_WINDOW_AUTO_CLOSE_MS } from "./upLoad/uploadTimeouts.js";
 import { skipCloseConfirmation } from "./upLoad/closeWindow.js";
@@ -146,9 +147,10 @@ async function doUpload(data, transport, queueDone) {
     if (win && !win.isDestroyed()) win.close();
   };
 
+  let capturingStall = false;
   const createAttemptTransport = (page) => ({
     reply(channel, ...args) {
-      if (finished) return false;
+      if (finished || capturingStall) return false;
       const payload = args[0];
       if (
         channel === "puppeteerFile-done" &&
@@ -255,19 +257,32 @@ async function doUpload(data, transport, queueDone) {
       let lastProgressLogAt = 0;
       let lastSamplingError = "";
       let samplingProgress = false;
-      const failStalledTask = (message) => {
-        if (finished || activeWin !== win) return;
+      const failStalledTask = async (message) => {
+        if (finished || capturingStall || activeWin !== win) return;
+        capturingStall = true;
+        app.publisherIdleTimeout = true;
         const progress = getPublishProgress(page);
-        console.error("[发布卡点]", JSON.stringify({ ...progress, message,
+        const state = { ...progress, message,
           stageSeconds: Math.round((Date.now() - progress.stageStartedAt) / 1000),
           idleSeconds: Math.round((Date.now() - Math.max(lastProgressAt, progress.stageStartedAt)) / 1000),
-          lastPageState: lastPageState ? JSON.parse(lastPageState) : null, lastSamplingError }));
-        safeReply("puppeteerFile-done", {
-          ...data, status: false, message, outcome: "unknown", needsAttention: true,
-        });
-        finishOnce();
-        win._mmClosedByProgram = true;
-        if (!win.isDestroyed()) win.destroy();
+          lastPageState: lastPageState ? JSON.parse(lastPageState) : null, lastSamplingError };
+        console.error("[发布卡点]", JSON.stringify(state));
+        let diagnostics = {};
+        try {
+          diagnostics = await saveStalledPublishDiagnostics(win, state);
+        } catch (error) {
+          console.error("[发布超时诊断保存失败]", error.message);
+        } finally {
+          const detail = diagnostics.diagnosticPath ? `${message}；诊断日志：${diagnostics.diagnosticPath}` : message;
+          safeReply("puppeteerFile-done", {
+            ...data, ...diagnostics, status: false, message: detail, outcome: "unknown", needsAttention: true,
+          });
+          // 超时会话不参与后续视频的浏览器复用。
+          data.reuseSessionFinal = true;
+          finishOnce();
+          win._mmClosedByProgram = true;
+          if (!win.isDestroyed()) win.destroy();
+        }
       };
       win.webContents.once("render-process-gone", (_event, details) => {
         failStalledTask(`${data.pt}浏览器渲染进程退出：${details.reason}，请先核对作品管理后再重发`);
@@ -402,7 +417,7 @@ async function doUpload(data, transport, queueDone) {
         }
         if (activeWin === win) activeWin = null;
         if (activeBrowser === browser) activeBrowser = null;
-        if (finished) return;
+        if (finished || capturingStall) return;
         const retry =
           Boolean(win._mmRetryAfterClose) && currentAttempt < maxRetries;
         if (retry) {
@@ -539,7 +554,7 @@ async function doUpload(data, transport, queueDone) {
             }
           }
         } catch (err) {
-          if (finished) return;
+          if (finished || capturingStall) return;
           console.error("[发布失败阶段]", JSON.stringify({ ...getPublishProgress(page), error: err.message,
             lastPageState: lastPageState ? JSON.parse(lastPageState) : null, lastSamplingError }));
           console.log(`尝试${currentAttempt}执行平台逻辑失败:`, err);
@@ -563,6 +578,7 @@ async function doUpload(data, transport, queueDone) {
         }
       }, 3000);
     } catch (error) {
+      if (finished || capturingStall) return;
       const proxyConfigError =
         error && /代理/.test(String(error.message || error));
       if (proxyConfigError) {

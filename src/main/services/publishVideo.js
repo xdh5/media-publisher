@@ -236,6 +236,9 @@ async function runSingleFilePublishInner(
             id: recordId,
             publishMode: completion.savedAsDraft ? "draft" : "publish",
             outcome: payload && payload.outcome,
+            diagnosticPath: payload?.diagnosticPath,
+            screenshotPath: payload?.screenshotPath,
+            screenshotError: payload?.screenshotError,
             needsAttention: completion.fallbackDraft || payload?.needsAttention === true,
           });
         } else if (channel === "puppeteer-noLogin") {
