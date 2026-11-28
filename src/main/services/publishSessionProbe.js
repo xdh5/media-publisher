@@ -2,7 +2,7 @@
 
 import { isPlatformLoginUrl, KUAISHOU_VIDEO_UPLOAD_SELECTOR } from "../../shared/platformPageState.js";
 
-import { verifyWechatAccountIdentity } from "./wechatAccountIdentity.js";
+import { readWechatAccountProfile } from "./wechatAccountProfile.js";
 
 const READY_SELECTORS = {哔哩哔哩: ['.bcc-upload-wrapper input[type="file"], .bcc-upload input[type="file"]'],
 抖音: ['input[name="upload-btn"]'],
@@ -83,7 +83,7 @@ export async function probeRealPublishSession(page, platform, timeoutMs = 30000)
 }
 
 async function inspectPublishSession(page, platform, timeoutMs) {
-  if (platform === "视频号") return verifyWechatAccountIdentity(page);
+  if (platform === "视频号") return readWechatAccountProfile(page);
   if (!needsRealPublishSessionProbe(platform)) {
     return { ok: true, reason: "当前平台无需真实发布页探测" };
   }

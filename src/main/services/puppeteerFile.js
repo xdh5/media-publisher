@@ -447,7 +447,6 @@ async function doUpload(data, transport, queueDone) {
                   currentUrl: sessionProbe.currentUrl || currentUrl,
                   message,
                   realSessionProbe: true,
-                  identityMismatch: sessionProbe.identityMismatch === true,
                   needsAttention: true,
                   supportsQrLogin,
 

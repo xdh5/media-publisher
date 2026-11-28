@@ -25,7 +25,7 @@ import {
   normalizeSphPartition,
 } from "./sphSessionUtil.js";
 import { applyAccountProxyForTask } from "../proxyConfig.js";
-import { verifyWechatAccountIdentity } from "../wechatAccountIdentity.js";
+import { readWechatAccountProfile } from "../wechatAccountProfile.js";
 import {
   CLI_LOGIN_QR_FIRST_DELAY_MS,
   CLI_LOGIN_QR_REFRESH_MS,
@@ -389,18 +389,13 @@ export async function runSphCliLogin({
               verifying = true;
               try {
                 await piePage.goto(cfg.upload, { waitUntil: "domcontentloaded", timeout: 30000 });
-                const identity = await verifyWechatAccountIdentity(piePage, true);
-                if (!identity.ok) {
-                  if (identity.identityMismatch) {
-                    console.error(identity.reason);
-                    await finish(3, { log: identity.reason });
-                    return;
-                  }
-                  throw new Error(identity.reason);
+                const profile = await readWechatAccountProfile(piePage);
+                if (!profile.ok) {
+                  throw new Error(profile.reason);
                 }
                 await finish(0, {
                   clearTerminal: true,
-                  log: `视频号登录成功，个人信息接口验证通过，唯一账号 ID 已绑定：${identity.displayName}。`,
+                  log: `视频号登录成功，个人信息接口验证通过，当前昵称：${profile.displayName}。`,
                 });
               } catch (error) {
                 console.error("视频号真实发布页验证未通过:", error.message);

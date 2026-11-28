@@ -44,11 +44,10 @@ export async function probeAccountSessions(accounts) {
           screenshotPath = path.join(os.tmpdir(), `media-publisher-probe-${randomUUID()}.png`);
           await page.screenshot({ path: screenshotPath });
         }
-        const platformAccountId = account.pt === '视频号' ? result.platformAccountId : result.ok && account.pt === '哔哩哔哩'
+        const platformAccountId = result.ok && account.pt === '哔哩哔哩'
           ? (await page.cookies('https://www.bilibili.com')).find(row => row.name === 'DedeUserID')?.value : undefined;
         return { platformAccountId, loggedIn: result.ok ? true : result.loginRequired ? false : null,
-          identityMismatch: result.identityMismatch === true, bindingRequired: result.bindingRequired === true,
-          displayName: result.displayName, expectedAccountId: result.expectedAccountId,
+          displayName: result.displayName,
           status: result.ok ? "connected" : result.loginRequired ? "login_required" : "error",
           loginRequired: result.loginRequired === true, realSessionProbe: true,
           checkedAt: new Date().toISOString(), reason: result.reason, currentUrl: result.currentUrl, screenshotPath,

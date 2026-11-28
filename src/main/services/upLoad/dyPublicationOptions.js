@@ -95,7 +95,7 @@ export async function generateDyChapters(page) {
 export { clickText };
 
 async function uploadCoverImage(page, filename) {
-  const input = await page.$("input.semi-upload-hidden-input");
+  const input = await page.waitForSelector('.dy-creator-content-modal .semi-upload:has(.semi-upload-drag-area-main-text) input.semi-upload-hidden-input', { timeout: 0 });
   const receipt = await runWithDyResponse(page, "封面图片上传确认", response => {
     const url = new URL(response.url());
     return ["imagex.bytedanceapi.com", "open.bytedanceapi.com"].includes(url.hostname) &&
@@ -120,14 +120,44 @@ export async function uploadDyCovers(page, landscape, portrait) {
   const receipts = [];
   for (let index = 0; index < files.length; index++) {
     setPublishStage(page, index === 0 ? "上传并保存抖音横版封面" : "上传并保存抖音竖版封面");
-    await page.evaluate(position => {
-      document.querySelectorAll('[class^="coverControl-"] [class^="cover-"]:not([class^="cover-tip-"])')[position].click();
-    }, index);
-    await page.waitForSelector("input.semi-upload-hidden-input", { timeout: 0 });
+    const ratio = index === 0 ? "4:3" : "3:4";
+    await page.evaluate(expected => {
+      const normalize = value => String(value || "").replace(/\s+/g, "").replace(/：/g, ":");
+      const other = expected === "4:3" ? "3:4" : "4:3";
+      const labels = [...document.querySelectorAll('[class*="coverControl-"], [class*="coverControl-"] *')]
+        .filter(node => normalize(node.textContent).includes(expected) && !normalize(node.textContent).includes(other) && node.getBoundingClientRect().width > 0)
+        .sort((left, right) => left.textContent.length - right.textContent.length);
+      for (const label of labels) {
+        let card = label;
+        while (card && !normalize(card.textContent).includes(other)) {
+          const trigger = card.querySelector('[class^="cover-"]:not([class^="cover-tip-"])');
+          if (trigger && trigger.getBoundingClientRect().width > 0) {
+            trigger.click();
+            return;
+          }
+          card = card.parentElement;
+        }
+      }
+      throw new Error(`未找到抖音 ${expected} 封面入口`);
+    }, ratio);
+    await page.waitForSelector(".dy-creator-content-modal", { visible: true, timeout: 0 });
+    await page.evaluate(vertical => {
+      const editor = document.querySelector(".dy-creator-content-modal");
+      const label = vertical ? "设置竖封面" : "设置横封面";
+      const tab = [...editor.querySelectorAll("button,span,div")].find(node =>
+        node.textContent.trim() === label && node.getBoundingClientRect().width > 0);
+      if (tab) tab.click();
+    }, index !== 0);
+    await page.waitForTimeout(800);
+    console.log("[抖音封面文件]", JSON.stringify({ ratio, file: files[index] }));
     setPublishStage(page, index === 0 ? "上传抖音横版封面图片" : "上传抖音竖版封面图片");
     const receipt = await uploadCoverImage(page, files[index]);
     receipts.push({ orientation: index === 0 ? "landscape" : "portrait", ...receipt });
     setPublishStage(page, index === 0 ? "保存抖音横版封面并等待编辑器关闭" : "保存抖音竖版封面并等待编辑器关闭");
+    await page.waitForFunction(() => [...document.querySelectorAll('.dy-creator-content-modal button')]
+      .some(button => button.textContent.trim() === "完成" && !button.disabled &&
+        button.getAttribute("aria-disabled") !== "true" && !button.classList.contains("semi-button-disabled") &&
+        button.getBoundingClientRect().width > 0), { timeout: 0, polling: 250 });
     await clickText(page, "完成");
     await pollPageUntil(page, () => {
       const buttons = [...document.querySelectorAll("button")];
