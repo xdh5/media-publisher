@@ -59,7 +59,7 @@ def _last_json(text: str):
 
 
 def _latest_log() -> Path | None:
-    log_dir = Path(os.getenv("APPDATA", "")) / "media-publisher" / "logs"
+    log_dir = matrix_root() / "logs"
     if not log_dir.is_dir():
         return None
     files = [item for item in log_dir.glob("*.log") if item.is_file()]

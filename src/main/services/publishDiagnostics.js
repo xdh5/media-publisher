@@ -3,11 +3,12 @@
 import { app } from "electron";
 import fs from "fs";
 import path from "path";
+import { getMainProcessLogDir } from "./mainProcessLogFile.js";
 
 /** 截图使用 Electron，不依赖可能已经无响应的 Puppeteer 连接。 */
 export async function saveStalledPublishDiagnostics(win, state) {
   const name = `${Date.now()}-${state.taskId}-${state.attempt}`.replace(/[^\w.-]/g, "_");
-  const directory = path.join(app.getPath("sessionData"), "logs", "publish-stalls", name);
+  const directory = path.join(getMainProcessLogDir(app), "publish-stalls", name);
   fs.mkdirSync(directory, { recursive: true });
   const screenshotPath = path.join(directory, "screenshot.png");
   let timer;

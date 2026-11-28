@@ -66,6 +66,7 @@ export function resolveMatrixRoot(app) {
  * 必须在 app ready 之前调用。没有账号组时落在 data 根目录。
  */
 export function configureMatrixSessionData(app) {
+  app.setAppLogsPath(path.join(process.env.MEDIA_PUBLISHER_DIR || resolveMatrixRoot(app), "logs"));
   const group = accountGroupFromArgv();
   const dataDir = path.join(resolveMatrixRoot(app), "data", group);
   fs.mkdirSync(dataDir, { recursive: true });

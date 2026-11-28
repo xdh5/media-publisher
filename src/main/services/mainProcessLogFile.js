@@ -3,6 +3,7 @@
 import fs from "fs";
 import path from "path";
 import util from "util";
+import { resolveMatrixRoot } from "./matrixDataPaths.js";
 
 const LOG_FILE_NAME_RE = /^\d{4}-\d{2}-\d{2}\.log$/;
 
@@ -86,7 +87,7 @@ export function installMainProcessLogFile(app) {
 }
 
 export function getMainProcessLogDir(app) {
-  return app.getPath("logs");
+  return path.join(process.env.MEDIA_PUBLISHER_DIR || resolveMatrixRoot(app), "logs");
 }
 
 export function getMainProcessLogFilePath(app) {

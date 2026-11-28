@@ -232,7 +232,7 @@ Get-Content -Raw -Encoding utf8 ./request.json | python -m publishing publish
 
 ## 浏览器超时日志
 
-页面连续10分钟无进展时，保存 Electron 截图和阶段诊断到 `data/<账号组>/logs/publish-stalls/`，关闭本条窗口并返回失败；单条 CLI 进程退出，批次继续下一条，小红书仍暂停本批剩余小红书任务。截图失败时在 diagnostic.json 记录原因。已提交但结果不明的条目须核对回执后再重发。
+页面连续10分钟无进展时，保存 Electron 截图和阶段诊断到 `logs/publish-stalls/`，关闭本条窗口并返回失败；单条 CLI 进程退出，批次继续下一条，小红书仍暂停本批剩余小红书任务。截图失败时在 diagnostic.json 记录原因。已提交但结果不明的条目须核对回执后再重发。
 
 ## 其他 CLI
 
