@@ -204,20 +204,22 @@ export async function setDialogSchedule(page, platform, publishAt, article = fal
               rect.height > 0
             );
           };
-          const norm = (text) => String(text || "").replace(/\s+/g, "").trim();
+          const norm = (text) => String(text || "").replace(/\s+/g, "").replace(/\d+/g, value => String(Number(value))).trim();
           const candidates = [
             ...document.querySelectorAll(
               ".byte-select-option, [class*='select-option'], [role='option'], li"
             ),
           ].filter(visible);
-          const target = candidates.find((node) => norm(node.textContent) === expected);
+          const target = candidates.find((node) => norm(node.textContent) === norm(expected));
           if (!target) {
             return {
               ok: false,
               options: candidates.map((node) => norm(node.textContent)).filter(Boolean).slice(-80),
             };
           }
-          target.click();
+          const textNode = [...target.querySelectorAll('*')].find(node =>
+            node.childElementCount === 0 && norm(node.textContent) === norm(expected));
+          (textNode || target).id = '__mm_timing_option';
           return { ok: true };
         }, value);
       let picked = await pickOnce();
@@ -241,7 +243,11 @@ export async function setDialogSchedule(page, platform, publishAt, article = fal
       if (!picked.ok) {
         throw new Error(`头条${label}未找到选项 ${value}：${JSON.stringify(picked.options)}`);
       }
-      await page.waitForTimeout(250);
+      await page.click('#__mm_timing_option');
+      await page.waitForFunction((targetSelector, expected) => {
+        const norm = text => String(text || '').replace(/\s+/g, '').replace(/\d+/g, value => String(Number(value)));
+        return norm(document.querySelector(`${targetSelector} .byte-select-view-value`)?.textContent) === norm(expected);
+      }, { timeout: 0, polling: 100 }, selector, value);
     };
 
     await selectValue(".common-timing-picker .day-select", publishAt.monthDay, "日期");

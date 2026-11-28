@@ -5,6 +5,7 @@ import fs from "fs";
 import { fillToutiaoArticle, setToutiaoCheckbox, clickToutiaoText, waitToutiaoArticleImagesReady } from "./ttText.js";
 import { saveToutiaoPublicationResult } from "./ttPublishResult.js";
 import { submitToutiaoContent } from "./ttApiResponses.js";
+import { runWithPublishResponse } from "../publishApiResponse.js";
 
 export async function publishToutiaoArticle(page, data, window, event) {
   const filename = data.publishOptions.toutiaoManifestPath;
@@ -16,6 +17,7 @@ export async function publishToutiaoArticle(page, data, window, event) {
       const form = new URLSearchParams(response.request().postData());
       const body = await response.json();
       const record = { time: new Date().toISOString(), save: form.get("save"),
+        is_app_preview: form.get("is_app_preview"),
         timer_status: form.get("timer_status"), timer_time: form.get("timer_time"),
         code: body.code, message: body.message };
       fs.appendFileSync(path.join(manifest.output_dir, "toutiao-article-save-events.jsonl"), JSON.stringify(record) + "\n");
@@ -43,35 +45,48 @@ export async function publishToutiaoArticle(page, data, window, event) {
   setPublishStage(page, "设置头条文章引用AI声明");
   await setToutiaoCheckbox(page, "引用AI", manifest.publish_options.quote_ai);
   setPublishStage(page, "设置头条文章无封面");
-  const noCover = await page.evaluateHandle(() => [...document.querySelectorAll(".article-cover label")]
-    .find(node => node.textContent.trim() === "无封面"));
-  await noCover.asElement().click();
-  await page.waitForFunction(() => document.querySelector('.article-cover input[value="1"]')?.checked,
+  const selectNoCover = async () => {
+    await page.evaluate(() => [...document.querySelectorAll('.article-cover .byte-radio-inner-text')]
+      .find(node => node.textContent.trim() === '无封面').click());
+    await page.waitForFunction(() => [...document.querySelectorAll('.article-cover label')].some(node =>
+      node.textContent.trim() === '无封面' && node.querySelector('.byte-radio-inner.checked')),
     { timeout: 0, polling: 100 });
+  };
+  await selectNoCover();
   setPublishStage(page, "等待头条文章正文图片上传完成");
   await waitToutiaoArticleImagesReady(page, imageCount);
   const scheduled = data.officialScheduledPublish;
-  let schedule;
+  const preview = !scheduled && await page.evaluate(() => [...document.querySelectorAll('button')].some(element =>
+    element.textContent.trim() === '预览并发布' && element.getBoundingClientRect().width > 0));
+  const runPreview = action => runWithPublishResponse(page, '头条文章预览', response => {
+    if (response.request().method() !== 'POST' || new URL(response.url()).pathname !== '/mp/agw/article/publish') return false;
+    return new URLSearchParams(response.request().postData()).get('is_app_preview') === '1';
+  }, action);
+  let previewReceipt;
   if (scheduled) {
     const [day, time] = data.publishAt.split(" ");
-    schedule = { minute: day + " " + time.slice(0, 5),
+    const schedule = { minute: day + " " + time.slice(0, 5),
       monthDay: `${Number(day.slice(5, 7))}月${Number(day.slice(-2))}日`,
       hour: String(Number(time.slice(0, 2))), minuteValue: String(Number(time.slice(3, 5))) };
     setPublishStage(page, "打开头条文章官方预约弹窗并预览");
-    await setDialogSchedule(page, "头条", schedule, true);
+    previewReceipt = await runPreview(() => setDialogSchedule(page, "头条", schedule, true));
   }
   setPublishStage(page, "预览头条文章并等待确认发布按钮");
-  const preview = await page.evaluate(() => [...document.querySelectorAll('button')].some(element =>
-    element.textContent.trim() === '预览并发布' && element.getBoundingClientRect().width > 0));
   if (preview && !scheduled) {
-    await clickToutiaoText(page, "预览并发布");
-    await page.waitForFunction(() => [...document.querySelectorAll('button')].some(element =>
-      element.textContent.trim() === "确认发布" && !element.disabled), { timeout: 0, polling: 100 });
+    previewReceipt = await runPreview(() => clickToutiaoText(page, "预览并发布"));
   }
+  if (scheduled && previewReceipt.body.code !== 0) {
+    throw new Error(`头条文章预约预览失败：${previewReceipt.body.message || previewReceipt.body.code}，未执行正式发布`);
+  }
+  if (scheduled || preview) await page.waitForFunction(() => [...document.querySelectorAll('button')].some(element =>
+    element.textContent.trim() === "确认发布" && !element.disabled && element.getBoundingClientRect().width > 0),
+  { timeout: 0, polling: 100 });
   await waitToutiaoArticleImagesReady(page, imageCount);
+  // 预览和插图处理可能重新选择三图，正式提交前以组件状态再次确认无封面。
+  await selectNoCover();
+  await page.screenshot({ path: path.join(manifest.output_dir, 'toutiao-article-preview.png') });
   setPublishStage(page, "确认发布头条文章");
-  await submitToutiaoContent(page, data, "article", () => scheduled
-    ? setDialogSchedule(page, "头条", schedule, true)
-    : clickToutiaoText(page, preview ? "确认发布" : "发布", preview ? 2 : 1));
+  await submitToutiaoContent(page, data, "article", () =>
+    clickToutiaoText(page, scheduled || preview ? "确认发布" : "发布"));
   return saveToutiaoPublicationResult(page, data, manifest, "article", event, window);
 }

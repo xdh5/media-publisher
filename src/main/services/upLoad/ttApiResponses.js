@@ -45,7 +45,14 @@ export async function submitToutiaoContent(page, data, kind, action) {
   const receipt = await runWithPublishResponse(page, `头条${kind}提交`, async response => {
     const url = new URL(response.url());
     if (response.request().method() !== 'POST') return false;
-    if (url.pathname.replace(/\/$/, '') === submitPaths[kind]) return true;
+    if (url.pathname.replace(/\/$/, '') === submitPaths[kind]) {
+      if (kind === 'article') {
+        const posted = new URLSearchParams(response.request().postData());
+        // 头条正式发布为 save=1；自动保存和预览均为 save=0。
+        if (posted.get('save') !== '1') return false;
+      }
+      return true;
+    }
     if (url.hostname === 'mp.toutiao.com' && /publish|article|spice/.test(url.pathname)) {
       const body = await response.json().catch(() => null);
       console.log('[头条提交接口观察]', JSON.stringify({ kind, requestPath: url.pathname, httpStatus: response.status(),
