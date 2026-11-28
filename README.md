@@ -62,6 +62,8 @@ Get-Content -Raw -Encoding utf8 ./accounts.json | python -m publishing configure
 
 账号组配置：`data/accounts.json`。官方凭据：`data/credentials.json` 或 `data/<账号组>/.env`。浏览器会话：`data/<账号组>/Partitions/`。
 
+视频号首次登录保存唯一 ID 到 `data/<账号组>/wechat-channels-identity.json`。预检和上传前通过个人信息接口核对，ID 不匹配时停止发布。
+
 运行日志：`logs/`。超时截图和诊断：`logs/publish-stalls/`。
 
 ## MCP
